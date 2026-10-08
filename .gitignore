@@ -1,0 +1,23 @@
+# Captures brutes I/Q volumineuses
+*.cf32
+
+# Fichiers audio démodulés
+*.wav
+
+# Fichiers binaires compilés
+capture_iq
+
+# Fichiers temporaires d'images de décodage (garder la mire source mire_f4jxq.png)
+image_*.png
+decoded_*.png
+sstv_*.png
+test_*.png
+2026*.png
+M1_*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
