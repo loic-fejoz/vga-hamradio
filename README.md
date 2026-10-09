@@ -2,7 +2,11 @@
 
 > **Projet expérimental de radio logicielle (SDR) autonome détournant le convertisseur numérique-analogique (RAMDAC) d'une carte graphique NVIDIA GeForce pour émettre en direct des images SSTV (Martin 1) en bande HF (20m / 14.230 MHz USB).**
 
+*🇬🇧 English version available: [README.en.md](README.en.md) | Interactive animations: [illustrations.en.html](illustrations.en.html)*
+
 Ce guide documente l'ensemble de l'architecture, le protocole expérimental, les principes mathématiques sous-jacents, ainsi que **tous les écueils techniques rencontrés et leurs solutions** pour permettre une reproduction parfaite du banc d'essai.
+
+![Mire SSTV en couleur puis en dégradé de gris, avec le texte "DE F4JXQ SSTV GPU TX GeForce 630". L'ensemble est couvert d'un léger voile de points réguliers](image_recue_v2.png)
 
 ---
 
@@ -373,6 +377,9 @@ Trois shaders spécialisés (`FRAGMENT_SHADER_CW`, `FRAGMENT_SHADER_TONE`, `FRAG
 | [`decode_martin1.py`](./decode_martin1.py) | **Décodeur SSTV autonome** : FFT globale continue, démodulateur FM analytique, filtre adapté 1200 Hz, régression linéaire PLL et centrage horizontal $[-1500, +1500]$. |
 | [`full_sstv_transmission_and_decode.py`](./full_sstv_transmission_and_decode.py) | Orchestrateur complet : synchronise l'enregistrement SDRplay et l'émission GPU via SSH, puis produit l'image décodée et les métriques de fidélité. |
 | [`generate_test_card.py`](./generate_test_card.py) | Générateur Python de la mire de transmission officielle 320x256 ([`mire_f4jxq.png`](./mire_f4jxq.png)). |
+| [`illustrations.html`](./illustrations.html) | Démonstrateur interactif HTML5 autonome avec 5 animations et simulateurs Canvas temps réel. |
+| [`illustrations.en.html`](./illustrations.en.html) | Version anglaise du démonstrateur interactif HTML5 (`illustrations.html`). |
+| [`README.en.md`](./README.en.md) | Version anglaise complète de la présente documentation. |
 | [`CURRENT_STATE.md`](./CURRENT_STATE.md) | Synthèse technique détaillée, journal des essais et matrice comparative des modes d'émission. |
 | [`requirements.txt`](./requirements.txt) | Dépendances Python (`moderngl`, `glfw`, `numpy`, `pillow`, `scipy`). |
 
@@ -402,3 +409,5 @@ Mesures réalisées en transmission complète de 125 secondes en couplage d'air 
 ---
 
 ## 73 de F4JXQ ! 📻 Bonnes expérimentations radioamateurs !
+
+> ℹ️ **Transparence Éditoriale (Conformité EU AI Act) :** Cet article a été généré par un assistant IA sous la direction éditoriale et la structuration d'un auteur humain, qui en assure la relecture, la vérification technique, et la responsabilité du contenu (relecture en cours).

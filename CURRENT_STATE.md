@@ -1,6 +1,6 @@
 # État des Lieux et Compte-Rendu Technique : Émetteur SSTV Martin 1 via GPU RAMDAC
 
-**Date :** 9 octobre 2026 (06h40)  
+**Date :** 9 octobre 2026 (08h50)  
 **Auteur :** Loïc Fejoz / Assistant Antigravity  
 **Projet :** `vga-hamradio` (PoC Émission Radioamateur via détournement de RAMDAC VGA)
 
@@ -55,9 +55,9 @@ En augmentant la hauteur active $V_{\text{active}}$ à 2000 lignes pour $V_{\tex
 
 ## 3. Matrice Comparative des Modes Vidéo Émetteurs
 
-| Paramètre | Mode 1080p @ 60 Hz Standard | Mode $800\times 600$ @ 201 Hz (Rejeté) | Mode $800\times 2000$ @ 60 Hz (Validé) |
+| Paramètre | Mode 1080p @ 60 Hz Standard (Labo) | Mode $800\times 600$ @ 201 Hz (Rejeté) | Mode $800\times 2000$ @ 60 Hz (Validé Hors-Bande) |
 | :--- | :---: | :---: | :---: |
-| **Pixel Clock** | 148.50 MHz | 120.00 MHz | **120.00 MHz** |
+| **Pixel Clock ($PCLK$)** | 148.50 MHz | 120.00 MHz | **120.00 MHz** |
 | **Fréquence ligne $f_H$** | 67.50 kHz | 125.00 kHz | **125.000 kHz** |
 | **Harmonique sup. $f_c + f_H$** | 14.2975 MHz *(Dans bande 20m)* | 14.355 MHz *(Hors bande 20m)* | **14.355 MHz *(Hors bande 20m)*** |
 | **Harmonique inf. $f_c - f_H$** | 14.1625 MHz *(Dans bande 20m)* | 14.105 MHz *(CW)* | **14.105 MHz *(CW)*** |
@@ -66,17 +66,39 @@ En augmentant la hauteur active $V_{\text{active}}$ à 2000 lignes pour $V_{\tex
 | **Rapport cyclique RF** | 96.0 % | 96.8 % | **96.0 %** |
 | **Trames en retard GPU** | 0 (0.0 %) | 36 / 35s (0.5 %) | **0 (0.0 %)** |
 | **Pente de l'image SSTV** | Nulle (0) | Forte diagonale | **Nulle (0)** |
-| **Fidélité globale (PSNR)** | 19.56 dB | < 5 dB | **16.62 dB** |
-| **Corrélation RVB** | 97.7% / 97.7% / 97.2% | < 25% | **95.5% / 95.9% / 91.3%** |
+| **Fidélité globale (PSNR)** | **19.56 dB** | < 5 dB | **16.62 dB** |
+| **Corrélation RVB** | **97.7% / 97.7% / 97.2%** | < 25% | **95.5% / 95.9% / 91.3%** |
 
 ---
 
-## 4. Fichiers et Scripts Mis à Jour
+## 4. Répartition des Composants & Architecture Logicielle
 
-1. [setup_display.sh](file:///home/loic/projets/vga-hamradio/setup_display.sh) :
-   - Intègre le mode `800x2000_125k` activable par `./setup_display.sh -m 800` ou `./setup_display.sh -m 125k`.
-   - Modeline : `120.00 800 824 856 960 2000 2003 2008 2083 +hsync -vsync`.
-2. [decode_martin1.py](file:///home/loic/projets/vga-hamradio/decode_martin1.py) (côté Rx) :
-   - Plage de recherche de centrage horizontal `opt_shift` élargie à $[-1500, +1500]$ pour un calage automatique parfait sans troncature du front d'alignement.
-3. [full_sstv_transmission_and_decode.py](file:///home/loic/projets/vga-hamradio/full_sstv_transmission_and_decode.py) :
-   - Orchestre l'émission complète et le décodage avec réglage de la porteuse exacte (14.230062 MHz pour le mode 120 MHz).
+* **Poste Émetteur TX (`my-yuno` / `192.168.1.26`) :**
+  - Carte graphique : NVIDIA GeForce GT 630 (pilote `nouveau`).
+  - [setup_display.sh](file:///home/loic/projets/vga-hamradio/setup_display.sh) : Configure la sortie `VGA-1`, applique la modeline ($800\times 2000$ ou 1080p), gamma à 1.0, DPMS off.
+  - [vga_sstv.py](file:///home/loic/projets/vga-hamradio/vga_sstv.py) : Moteur d'émission temps réel ModernGL/GLFW avec shaders dédiés (`CW`, `TONE`, `SSTV`), texture I/Q Float32 (`GL_RG32F`), auto-détection dynamique de résolution via `xrandr`, `gc.disable()` et dithering temporel.
+  - *(Note : aucun décodeur n'est requis sur le Tx)*.
+
+* **Poste Récepteur RX (Machine locale `fixe-loic`) :**
+  - Matériel SDR : SDRplay RSP1 connecté en USB.
+  - [capture_iq.cpp](file:///home/loic/projets/vga-hamradio/capture_iq.cpp) : Capture streaming binaire CF32 à 250 kSps via SoapySDR.
+  - [decode_martin1.py](file:///home/loic/projets/vga-hamradio/decode_martin1.py) : Décodeur autonome (translation IF USB, FFT continue globale, discriminateur FM, matched filter 1200 Hz, PLL linéaire robuste et calage horizontal $[-1500, +1500]$).
+  - [full_sstv_transmission_and_decode.py](file:///home/loic/projets/vga-hamradio/full_sstv_transmission_and_decode.py) : Orchestrateur synchronisant la capture SDR locale et l'émission distante via SSH.
+
+---
+
+## 5. Commandes de Référence pour les Tests
+
+```bash
+# 1. Configurer le mode hors-bande sur l'émetteur :
+ssh loic@192.168.1.26 "DISPLAY=:0 ~/projets/vga-hamradio/setup_display.sh -m 800"
+
+# 2. Calibration porteuse pure (CW 15 secondes) :
+ssh loic@192.168.1.26 "cd ~/projets/vga-hamradio && DISPLAY=:0 .venv/bin/python3 vga_sstv.py --cw -f 14.230e6 --duration 15"
+
+# 3. Émission complète et décodage automatique (Mode Hors-Bande fc = 14.230062 MHz) :
+python3 full_sstv_transmission_and_decode.py -c 14230062 --cpp
+
+# 4. Émission complète et décodage automatique (Mode Labo 1080p fc = 14.230034 MHz) :
+python3 full_sstv_transmission_and_decode.py -c 14230034
+```

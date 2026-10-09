@@ -296,8 +296,8 @@ def save_texture_file(filepath, iq_bytes, total_samples, tex_w, tex_h, total_dur
 def load_texture_file(filepath):
     """Charge une texture I/Q pré-calculée depuis un fichier .sstvtex."""
     with open(filepath, "rb") as f:
-        header_bytes = f.read(64)
-        if len(header_bytes) < 64:
+        header_bytes = f.read(72)
+        if len(header_bytes) < 72:
             raise ValueError(f"Fichier texture corrompu ou trop court : {filepath}")
         magic, version, audio_fs, total_samples, tex_w, tex_h, total_duration, data_bytes, _ = struct.unpack(
             "<8sIIIIIdI32s", header_bytes
@@ -437,6 +437,9 @@ def run_transmitter(mode=2, image_path=None, iq_precomputed=None, carrier_freq=1
          1.0, -1.0,
          1.0,  1.0,
     ], dtype='f4')
+    vbo = ctx.buffer(vertices.tobytes())
+    vao = ctx.simple_vertex_array(prog, vbo, 'in_position')
+
     # 3. Boucle de transmission
     print(f"\n🚀 ÉMISSION EN COURS (Durée : {duration:.1f} s)...")
     if mode == 0:

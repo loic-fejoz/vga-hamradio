@@ -1,0 +1,2067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDR via GPU RAMDAC — Interactive Animations & Technical Demonstration</title>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1f2937;
+            --bg-card: #141e33;
+            --border-color: #2e3d5b;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-cyan: #00f0ff;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-purple: #a855f7;
+            --accent-blue: #3b82f6;
+            --glow-cyan: 0 0 15px rgba(0, 240, 255, 0.4);
+            --glow-green: 0 0 15px rgba(16, 185, 129, 0.4);
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --font-mono: "JetBrains Mono", "Fira Code", Consolas, Monaco, "Courier New", monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(180deg, #0f172a 0%, #0a0e17 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 2.5rem 1.5rem 2rem;
+            text-align: center;
+            position: relative;
+        }
+
+        header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 20%;
+            right: 20%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+        }
+
+        .badge-bar {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .badge {
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            color: var(--accent-cyan);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge.green {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.3);
+            color: var(--accent-green);
+        }
+
+        .badge.purple {
+            background: rgba(168, 85, 247, 0.1);
+            border-color: rgba(168, 85, 247, 0.3);
+            color: var(--accent-purple);
+        }
+
+        .badge.amber {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgba(245, 158, 11, 0.3);
+            color: var(--accent-amber);
+        }
+
+        h1 {
+            font-size: 2.4rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #ffffff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.75rem;
+        }
+
+        .subtitle {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        /* Tab Navigation */
+        .nav-container {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(10, 14, 23, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            overflow-x: auto;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding-bottom: 0.25rem;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 600;
+            padding: 0.6rem 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .tab-btn.active {
+            color: #ffffff;
+            background: #1e293b;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+        }
+
+        /* Main Container */
+        main {
+            max-width: 1350px;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Cards & Panels */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 0.75rem;
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        @media (max-width: 900px) {
+            .grid-2, .grid-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Interactive Controls */
+        .controls-bar {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 1rem;
+        }
+
+        .ctrl-btn {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.45rem 0.9rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .ctrl-btn:hover {
+            background: #334155;
+            border-color: var(--accent-cyan);
+        }
+
+        .ctrl-btn.active {
+            background: var(--accent-cyan);
+            color: #050b14;
+            border-color: var(--accent-cyan);
+        }
+
+        .ctrl-btn.green.active {
+            background: var(--accent-green);
+            color: #050b14;
+            border-color: var(--accent-green);
+        }
+
+        .ctrl-slider-group {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .ctrl-slider-group input[type="range"] {
+            accent-color: var(--accent-cyan);
+            cursor: pointer;
+        }
+
+        /* Animation Canvases */
+        .canvas-container {
+            position: relative;
+            background: #060911;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        .canvas-overlay-tag {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-radius: 6px;
+            padding: 0.25rem 0.6rem;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent-cyan);
+            pointer-events: none;
+        }
+
+        /* Text Boxes & Explanations */
+        .tech-box {
+            background: rgba(15, 23, 42, 0.6);
+            border-left: 4px solid var(--accent-cyan);
+            padding: 1rem 1.25rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1rem 0;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+        }
+
+        .tech-box.green {
+            border-left-color: var(--accent-green);
+        }
+
+        .tech-box.amber {
+            border-left-color: var(--accent-amber);
+        }
+
+        .tech-box.red {
+            border-left-color: var(--accent-red);
+        }
+
+        .tech-box strong {
+            color: var(--text-primary);
+        }
+
+        code {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: var(--accent-cyan);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.85em;
+        }
+
+        .math-eq {
+            background: #0b1120;
+            border: 1px solid #1e293b;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-family: var(--font-mono);
+            color: #38bdf8;
+            font-size: 0.95rem;
+            text-align: center;
+            margin: 0.75rem 0;
+            overflow-x: auto;
+        }
+
+        /* Comparison Cards */
+        .comp-card {
+            background: #0b1120;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.25rem;
+            position: relative;
+        }
+
+        .comp-card.highlight {
+            border-color: var(--accent-green);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+        }
+
+        .comp-card.legacy {
+            border-color: #475569;
+            opacity: 0.85;
+        }
+
+        .comp-card .pill {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.6rem;
+            text-transform: uppercase;
+        }
+
+        .comp-card.legacy .pill {
+            background: #334155;
+            color: #94a3b8;
+        }
+
+        .comp-card.highlight .pill {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        /* Tables */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            margin: 1rem 0;
+        }
+
+        .data-table th, .data-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .data-table th {
+            background: #0f172a;
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        .data-table tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .data-table td.highlight {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border-color);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 3rem;
+            background: #070a12;
+        }
+
+        footer a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="badge-bar">
+            <span class="badge green">● Validated on Physical Hardware (GT 630 + RSP1)</span>
+            <span class="badge">Scientific Originality Score: 9.4 / 10</span>
+            <span class="badge purple">HF 20m Band (14.230 MHz USB)</span>
+            <span class="badge amber">Martin 1 SSTV</span>
+            <a href="illustrations.html" class="badge" style="text-decoration: none; color: #fff; background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.5);">🌐 Version Française</a>
+        </div>
+        <h1>SSTV Radio Transmitter & SDR via GPU RAMDAC</h1>
+        <p class="subtitle">
+            Interactive demonstration illustrating the architectural breakthroughs of our hybrid CPU/GPU SDR pipeline compared to the global state of the art.
+        </p>
+    </header>
+
+    <div class="nav-container">
+        <div class="nav-tabs">
+            <button class="tab-btn active" onclick="switchTab('tab-diff')">
+                <span>⚡</span> 1. Prior Art vs Our Approach
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-shader')">
+                <span>🔬</span> 2. Fragment Shader Architecture & DAC
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-phase')">
+                <span>🌊</span> 3. Phase Coherence & Blanking
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-mode800')">
+                <span>🎯</span> 4. The 800×2000 Modeline Breakthrough
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-sstv')">
+                <span>📻</span> 5. Complete SSTV Pipeline & Martin 1 Decode
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-matrix')">
+                <span>📊</span> 6. Matrix & Benchmarked Metrics
+            </button>
+        </div>
+    </div>
+
+    <main>
+
+        <!-- TAB 1 : PRIOR ART VS OUR APPROACH -->
+        <section id="tab-diff" class="tab-content active">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><span>⚡</span> How is our approach fundamentally different?</h2>
+                    <span class="badge">Systemic Comparison</span>
+                </div>
+                
+                <p style="margin-bottom: 1.25rem; color: var(--text-secondary);">
+                    Since 1998 (*Soft TEMPEST* by Kuhn & Anderson), all attempts at generating radio emissions using computer display cards relied on 
+                    <strong>the host CPU computing full bitmap arrays</strong> or repurposing dedicated USB display chips (*osmo-fl2k*). 
+                    Our project introduces an <strong>asynchronous hybrid architecture</strong> where the GPU synthesizes the radio frequency waveform 
+                    directly at 148.5 million samples per second.
+                </p>
+
+                <div class="controls-bar">
+                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Data Pipeline Simulation:</span>
+                    <button class="ctrl-btn active" id="btn-flow-play" onclick="toggleFlowAnim()">⏸ Pause</button>
+                    <button class="ctrl-btn" onclick="resetFlowAnim()">🔄 Reset</button>
+                    <div class="ctrl-slider-group" style="margin-left: auto;">
+                        <span>Speed:</span>
+                        <input type="range" id="flow-speed" min="0.2" max="2" step="0.1" value="1">
+                    </div>
+                </div>
+
+                <div class="canvas-container">
+                    <div class="canvas-overlay-tag">REAL-TIME PIPELINE SIMULATION</div>
+                    <canvas id="canvas-pipeline" width="1200" height="420"></canvas>
+                </div>
+
+                <div class="grid-2">
+                    <div class="comp-card legacy">
+                        <span class="pill">Conventional Approach (1998 - 2025)</span>
+                        <h3 style="color: #cbd5e1; margin-bottom: 0.5rem;">CPU-Bound Framebuffer Pushing</h3>
+                        <p style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 0.75rem;">
+                            *(Soft TEMPEST, Tempest for Eliza, Bellard DVB-T, VGASIG, TEMPEST-LoRa)*
+                        </p>
+                        <ul style="font-size: 0.875rem; color: #cbd5e1; padding-left: 1.2rem; line-height: 1.7;">
+                            <li><strong>PCIe Bus Bottleneck:</strong> The host CPU must compute 148,500,000 bytes/sec (~150 MB/s continuous) and stream them into VRAM.</li>
+                            <li><strong>OS Scheduling Jitter:</strong> Context switches, cache misses, and thread interrupts create micro-gaps that shatter RF phase coherence.</li>
+                            <li><strong>Crude Modulations:</strong> Restricted to CW, double-sideband AM, or line-by-line FM. Zero SSB support.</li>
+                            <li><strong>Blanking Phase Ruptures:</strong> Carrier phase resets at line and frame porches, causing demodulator loss of lock.</li>
+                        </ul>
+                    </div>
+
+                    <div class="comp-card highlight">
+                        <span class="pill">Our Approach (GPU Shader SDR)</span>
+                        <h3 style="color: var(--accent-cyan); margin-bottom: 0.5rem;">Per-Pixel 32-bit DDS & SSB Mixing in Fragment Shader</h3>
+                        <p style="font-size: 0.9rem; color: var(--accent-green); margin-bottom: 0.75rem;">
+                            *(PoC vga-hamradio — Validated on NVIDIA GT 630)*
+                        </p>
+                        <ul style="font-size: 0.875rem; color: #cbd5e1; padding-left: 1.2rem; line-height: 1.7;">
+                            <li><strong>Near-Zero Bus Bandwidth:</strong> Host CPU only generates analytic audio baseband (48 kHz, I/Q float32), uploaded <em>once</em> to VRAM (42 MB for 115 s).</li>
+                            <li><strong>Massive GPU Parallelism:</strong> GPU compute cores (CUDA / SMs) evaluate trigonometry and the mixer per fragment with sub-microsecond latency.</li>
+                            <li><strong>Pure Upper Sideband (SSB-SC):</strong> Cartesian Hilbert product $I(t)\cos(\theta_c) - Q(t)\sin(\theta_c)$ generating clean single-sideband.</li>
+                            <li><strong>Hardware Quartz Clocking:</strong> Zero OS scheduler jitter, strictly locked to the display controller pixel clock (120 or 148.5 MSPS).</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="tech-box green">
+                    <strong>Originality Assessment (DEEP-RESEARCH.md):</strong> 
+                    Rated at an originality score of <strong>9.4 / 10</strong>. This represents the world's first realization of true receiver-compliant single-sideband (SSB) amateur transmission synthesized directly inside GPU graphics fragment shaders without dedicated SDR hardware.
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2 : FRAGMENT SHADER ARCHITECTURE & DAC -->
+        <section id="tab-shader" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><span>🔬</span> Internal Operation of the GLSL Fragment Shader</h2>
+                    <span class="badge">Micro-Architecture & RAMDAC Scanout</span>
+                </div>
+
+                <p style="margin-bottom: 1.25rem; color: var(--text-secondary);">
+                    Every pixel on display corresponds to a precise instant in time. The RAMDAC (triple video D/A converter) 
+                    reads VRAM from left to right and top to bottom. By computing each fragment in the <strong>OpenGL Fragment Shader</strong>, 
+                    we calculate the instantaneous voltage emitted on physical Pin 1 (Red channel) of the VGA connector.
+                </p>
+
+                <div class="controls-bar">
+                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Render Controls:</span>
+                    <button class="ctrl-btn active" id="btn-shader-play" onclick="toggleShaderAnim()">⏸ Pause</button>
+                    <div class="ctrl-slider-group">
+                        <span>RF Carrier Zoom:</span>
+                        <input type="range" id="rf-freq-slider" min="1" max="10" step="0.5" value="4">
+                    </div>
+                    <div class="ctrl-slider-group">
+                        <span>Audio Modulation (FM SSTV):</span>
+                        <input type="range" id="audio-freq-slider" min="1200" max="2300" step="50" value="1900">
+                        <span id="audio-freq-val" style="font-family: var(--font-mono); color: var(--accent-cyan);">1900 Hz</span>
+                    </div>
+                </div>
+
+                <div class="canvas-container">
+                    <div class="canvas-overlay-tag">SCREEN RASTER SCAN & RAMDAC SAMPLING</div>
+                    <canvas id="canvas-shader" width="1200" height="460"></canvas>
+                </div>
+
+                <div class="grid-3">
+                    <div class="comp-card" style="border-color: #38bdf8;">
+                        <span class="pill" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">Step 1: Time Mapping</span>
+                        <h4 style="margin-bottom: 0.4rem; color: #e2e8f0;">Spatial-to-Temporal Conversion</h4>
+                        <div class="math-eq" style="font-size: 0.8rem; padding: 0.4rem;">
+                            sample = (y_scan × H_total) + x_scan
+                        </div>
+                        <p style="font-size: 0.8rem; color: #94a3b8;">
+                            Converts the 2D fragment coordinate <code>gl_FragCoord.xy</code> into a continuous temporal sample index within the complete video raster frame.
+                        </p>
+                    </div>
+
+                    <div class="comp-card" style="border-color: #a855f7;">
+                        <span class="pill" style="background: rgba(168, 85, 247, 0.2); color: #a855f7;">Step 2: 32-bit DDS & Texel</span>
+                        <h4 style="margin-bottom: 0.4rem; color: #e2e8f0;">Carrier DDS + I/Q Fetch</h4>
+                        <div class="math-eq" style="font-size: 0.8rem; padding: 0.4rem;">
+                            θ_c = (phase + sample × Δθ) × 2π/2³²
+                        </div>
+                        <p style="font-size: 0.8rem; color: #94a3b8;">
+                            Unsigned 32-bit DDS phase accumulator. Audio baseband $I(t)$ and $Q(t)$ are retrieved via ultra-fast bitwise masks <code>(& 2047u, >> 11)</code>.
+                        </p>
+                    </div>
+
+                    <div class="comp-card" style="border-color: #10b981;">
+                        <span class="pill" style="background: rgba(168, 85, 247, 0.2); color: var(--accent-green);">Step 3: Mixer & Output</span>
+                        <h4 style="margin-bottom: 0.4rem; color: #e2e8f0;">SSB USB Mixer & 8-bit DAC</h4>
+                        <div class="math-eq" style="font-size: 0.8rem; padding: 0.4rem;">
+                            RF = I·cos(θ_c) - Q·sin(θ_c)
+                        </div>
+                        <p style="font-size: 0.8rem; color: #94a3b8;">
+                            Cartesian product suppressing the unwanted Lower Sideband (LSB). The resulting analog voltage (0.0V–0.7V) drives <strong>Pin 1 of the VGA port</strong>.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="tech-box amber">
+                    <strong>Critical GPU Optimization (DEEP-RESEARCH-REMARKS.md):</strong> 
+                    Replaced costly integer modulo <code>%</code> and division <code>/</code> instructions (~30 GPU cycles) with single-cycle bitwise masks 
+                    <code>& 2047u</code> and right shifts <code>>> 11</code>. Compiled 3 dedicated shaders (CW, TONE, SSTV) to eliminate branch divergence completely.
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3 : PHASE COHERENCE & BLANKING -->
+        <section id="tab-phase" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><span>🌊</span> The Video Blanking Challenge & Mathematical Phase Coherence</h2>
+                    <span class="badge purple">Mathematical Modeling</span>
+                </div>
+
+                <p style="margin-bottom: 1.25rem; color: var(--text-secondary);">
+                    In CRT and digital displays, the electron beam / scanout controller pauses at the end of each line (Horizontal Blanking) 
+                    and frame (Vertical Blanking) to return to the origin. 
+                    <strong>During blanking intervals, the RAMDAC is physically clamped to 0 Volts.</strong> 
+                    How do we ensure that radio carrier phase does not jump upon resuming active scanlines?
+                </p>
+
+                <div class="controls-bar">
+                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Continuity Mode:</span>
+                    <button class="ctrl-btn" id="btn-phase-naive" onclick="setPhaseMode('naive')">❌ Naive Approach (Phase Resets / Slips)</button>
+                    <button class="ctrl-btn green active" id="btn-phase-ours" onclick="setPhaseMode('ours')">✓ Our Approach (Virtual Raster Tracking)</button>
+                    <button class="ctrl-btn" id="btn-phase-toggle" onclick="togglePhaseAnim()" style="margin-left: auto;">⏸ Pause</button>
+                </div>
+
+                <div class="canvas-container">
+                    <div class="canvas-overlay-tag" id="phase-tag">OUR POC APPROACH: ABSOLUTE PHASE COHERENCE</div>
+                    <canvas id="canvas-phase" width="1200" height="420"></canvas>
+                </div>
+
+                <div class="grid-2">
+                    <div class="comp-card" id="card-phase-naive">
+                        <span class="pill" style="background: rgba(239, 68, 68, 0.2); color: #ef4444;">Prior Art Flaw</span>
+                        <h3 style="color: #f87171; margin-bottom: 0.5rem;">Without Mathematical Compensation</h3>
+                        <p style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
+                            At the end of an active line, carrier phase is truncated. If the phase accumulator resets to zero or fails to account 
+                            for unrendered blanking clock cycles, the waveform experiences a <strong>violent phase discontinuity</strong>.
+                        </p>
+                        <div class="tech-box red" style="margin-top: 0.75rem; font-size: 0.85rem;">
+                            <strong>Consequence:</strong> Severe out-of-band spectral splatter, audible periodic clicks, and complete failure of 
+                            coherent demodulators (SSTV, SSB, PSK) to lock onto carrier phase.
+                        </div>
+                    </div>
+
+                    <div class="comp-card highlight" id="card-phase-ours">
+                        <span class="pill">Our Mathematical Breakthrough</span>
+                        <h3 style="color: var(--accent-green); margin-bottom: 0.5rem;">Master float64 Accumulator across Virtual Raster</h3>
+                        <p style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
+                            Phase advancement integrates all pixel clock cycles across virtual raster dimensions ($H_{\text{total}} \times V_{\text{total}}$), 
+                            including unrendered blanking porches. Host CPU calculates master frame phase <code>u_frame_phase</code> in 64-bit float locked via <code>swap_interval(1)</code>.
+                        </p>
+                        <div class="tech-box green" style="margin-top: 0.75rem; font-size: 0.85rem;">
+                            <strong>Result:</strong> Although output voltage is zero during blanking porches (0 V), the carrier resumes on the next line 
+                            <strong>with exact continuous phase</strong> as if the transmission had never been interrupted!
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4 : THE 800x2000 MODELINE BREAKTHROUGH -->
+        <section id="tab-mode800" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><span>🎯</span> The Spectral Dilemma & The 800×2000 @ 60 Hz Modeline Breakthrough</h2>
+                    <span class="badge green">Surpassing DEEP-RESEARCH.md</span>
+                </div>
+
+                <p style="margin-bottom: 1.25rem; color: var(--text-secondary);">
+                    Periodic RAMDAC gating at line rate $f_H$ generates <strong>line blanking harmonic spurs at $f_c \pm f_H$</strong>.
+                    The theoretical research document <em>DEEP-RESEARCH.md</em> concluded that an ultra-narrowband crystal ladder filter was mandatory. 
+                    Here is how we bypassed this hardware requirement through a custom geometric modeline innovation!
+                </p>
+
+                <div class="controls-bar">
+                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">Select Video Mode:</span>
+                    <button class="ctrl-btn" id="btn-mode-1080" onclick="setVideoMode('1080p')">Standard 1080p Mode (fH = 67.5 kHz)</button>
+                    <button class="ctrl-btn" id="btn-mode-200hz" onclick="setVideoMode('800_200hz')">800×600 @ 201 Hz Mode (Rejected)</button>
+                    <button class="ctrl-btn" id="btn-mode-wideblank" onclick="setVideoMode('800_blank')">800×600 71% Blanking Mode (Rejected)</button>
+                    <button class="ctrl-btn green active" id="btn-mode-800" onclick="setVideoMode('800_2000')">★ Custom 800×2000 @ 60 Hz (Our Breakthrough)</button>
+                </div>
+
+                <div class="canvas-container">
+                    <div class="canvas-overlay-tag" id="mode-tag">RF SPECTRUM & MEASURED SSTV DECODING</div>
+                    <canvas id="canvas-mode" width="1200" height="460"></canvas>
+                </div>
+
+                <div class="card" style="background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.06); margin-bottom: 0;">
+                    <div id="mode-explanation" style="font-size: 0.95rem; color: var(--text-secondary);">
+                        <!-- Dynamically populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 5 : COMPLETE SSTV PIPELINE & MARTIN 1 DECODE -->
+        <section id="tab-sstv" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><span>📻</span> Complete SSTV Pipeline & Real-Time Martin 1 Decoding</h2>
+                    <span class="badge">From Source Image to HF Carrier and SDR Decoder</span>
+                </div>
+
+                <p style="margin-bottom: 1.25rem; color: var(--text-secondary);">
+                    Transmitting a 320×256 color image via sequential scanline modulation of Green, Blue, and Red color channels.
+                    Watch how the analog radio signal synthesized by the GPU is captured, filtered, and demodulated by the SDR receiver.
+                </p>
+
+                <div class="controls-bar">
+                    <button class="ctrl-btn active" id="btn-sstv-play" onclick="toggleSstvAnim()">⏸ Pause</button>
+                    <button class="ctrl-btn" onclick="restartSstvAnim()">🔄 Restart Transmission</button>
+                    <div class="ctrl-slider-group">
+                        <span>Current Line:</span>
+                        <input type="range" id="sstv-line-slider" min="0" max="255" value="0">
+                        <span id="sstv-line-disp" style="font-family: var(--font-mono); color: var(--accent-cyan);">Line 0 / 255</span>
+                    </div>
+                    <div class="ctrl-slider-group" style="margin-left: auto;">
+                        <span>Scan Speed:</span>
+                        <input type="range" id="sstv-speed" min="0.5" max="4" step="0.5" value="1.5">
+                    </div>
+                </div>
+
+                <div class="canvas-container">
+                    <div class="canvas-overlay-tag">REAL-TIME TRANSMISSION & DECODING</div>
+                    <canvas id="canvas-sstv" width="1200" height="480"></canvas>
+                </div>
+
+                <div class="grid-3">
+                    <div class="comp-card">
+                        <span class="pill" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">1. Martin 1 Baseband Encoding (CPU)</span>
+                        <ul style="font-size: 0.8rem; color: #94a3b8; padding-left: 1.1rem; line-height: 1.6;">
+                            <li>VOX Preamble: 500 ms @ 1900 Hz</li>
+                            <li>VIS Digital Header: Code 44 (Martin 1)</li>
+                            <li>Line Sync Pulse: 4.86 ms @ 1200 Hz</li>
+                            <li>Sync Porch: 0.57 ms @ 1500 Hz</li>
+                            <li>Color Scans: Green, Blue, Red (57.15 ms each)</li>
+                        </ul>
+                    </div>
+
+                    <div class="comp-card">
+                        <span class="pill" style="background: rgba(168, 85, 247, 0.2); color: #a855f7;">2. GPU RF Synthesis (14.230 MHz USB)</span>
+                        <ul style="font-size: 0.8rem; color: #94a3b8; padding-left: 1.1rem; line-height: 1.6;">
+                            <li>DAC Conversion Rate: 120.00 MSPS (800×2000 Mode)</li>
+                            <li>Pure Cartesian SSB Quadrature Mixer</li>
+                            <li>Dynamic Pseudo-Random Temporal Dithering</li>
+                            <li>Impedance Matching Network (75 Ω → 50 Ω)</li>
+                            <li>Measured Conducted Power: ~1 mW (+0 dBm)</li>
+                        </ul>
+                    </div>
+
+                    <div class="comp-card highlight">
+                        <span class="pill">3. SDR Receiver (RSP1 / decode_martin1.py)</span>
+                        <ul style="font-size: 0.8rem; color: #cbd5e1; padding-left: 1.1rem; line-height: 1.6;">
+                            <li>SoapySDR Capture @ 250 kSps CF32 (0 buffer overflows)</li>
+                            <li>Single-Pass Global Continuous FFT Bandpass Filtering</li>
+                            <li>Coherent 1200 Hz Matched Filter for Sync Pulses</li>
+                            <li>Robust Linear Regression (PLL): <strong>Zero Slant (Slope = 0)</strong></li>
+                            <li>Decoded Success Rate: <strong>256 / 256 lines (100 %)</strong></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 6 : BENCHMARK MATRIX & PHYSICAL METRICS -->
+        <section id="tab-matrix" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><span>📊</span> International Comparative Matrix & Measured Experimental Results</h2>
+                    <span class="badge green">Physical Benchmarks</span>
+                </div>
+
+                <h3 style="color: var(--accent-cyan); margin-bottom: 0.75rem; font-size: 1.1rem;">
+                    1. Comparison with Foundational Prior Art
+                </h3>
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Project / Author</th>
+                                <th>Year</th>
+                                <th>Hardware Interface</th>
+                                <th>Modulation Scheme</th>
+                                <th>Compute Architecture</th>
+                                <th>Critical Limitations</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Soft TEMPEST</strong> (Kuhn & Anderson)</td>
+                                <td>1998</td>
+                                <td>CRT Display / Video Cable</td>
+                                <td>AM / Binary FSK</td>
+                                <td>CPU computes font bitmap patterns</td>
+                                <td>Extremely slow, crude AM tones</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Tempest for Eliza</strong> (E. Thiele)</td>
+                                <td>2001</td>
+                                <td>VGA CRT Cabling</td>
+                                <td>Double-Sideband AM Audio</td>
+                                <td>CPU renders real-time audio scanlines</td>
+                                <td>High jitter, phase drops, uncalibrated</td>
+                            </tr>
+                            <tr>
+                                <td><strong>VGA DVB-T / TV</strong> (F. Bellard)</td>
+                                <td>2005</td>
+                                <td>PC VGA Card RAMDAC</td>
+                                <td>DVB-T (COFDM) / Analog TV</td>
+                                <td>CPU pre-calculates OFDM buffers in RAM</td>
+                                <td>CPU bus saturation, static pre-computed loops</td>
+                            </tr>
+                            <tr>
+                                <td><strong>VGASIG</strong> (B. Kania)</td>
+                                <td>2009</td>
+                                <td>PC VGA Card RAMDAC</td>
+                                <td>WBFM (88–108 MHz)</td>
+                                <td>CPU computes real-time SDL scanlines</td>
+                                <td>100% CPU usage, line blanking phase ruptures</td>
+                            </tr>
+                            <tr>
+                                <td><strong>rpitx</strong> (E. Courjaud / F5OEO)</td>
+                                <td>2015</td>
+                                <td>Raspberry Pi GPCLK Pin</td>
+                                <td>CW, FM, SSB, SSTV, FreeDV</td>
+                                <td>Fractional PLL divider DMA streaming</td>
+                                <td>1-bit binary square wave, severe harmonic comb</td>
+                            </tr>
+                            <tr>
+                                <td><strong>osmo-fl2k</strong> (S. Markgraf)</td>
+                                <td>2018</td>
+                                <td>Fresco Logic FL2000 USB VGA</td>
+                                <td>WBFM, GSM, DVB-T, GPS</td>
+                                <td>Host streams raw samples via USB 3.0</td>
+                                <td>Requires FL2000 chip, disables video sync</td>
+                            </tr>
+                            <tr>
+                                <td><strong>TEMPEST-LoRa</strong> (Sun et al., ACM CCS)</td>
+                                <td>2025</td>
+                                <td>VGA & HDMI Cables</td>
+                                <td>Chirp Spread Spectrum (CSS)</td>
+                                <td>Pre-computed frequency sweep bitmaps</td>
+                                <td>Low data rate (21.6 bps), static sweeps</td>
+                            </tr>
+                            <tr style="background: rgba(0, 240, 255, 0.08); border-left: 3px solid var(--accent-cyan);">
+                                <td class="highlight"><strong>GPU Shader SDR (Our PoC)</strong></td>
+                                <td class="highlight">2026</td>
+                                <td class="highlight">GPU Display RAMDAC (Pin 1)</td>
+                                <td class="highlight"><strong>Analytic SSB-SC & Martin 1 SSTV</strong></td>
+                                <td class="highlight"><strong>Fragment Shader 32-bit DDS + I/Q Mixer</strong></td>
+                                <td class="highlight"><strong>Spurs rejected out-of-band (800×2000 Mode)</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3 style="color: var(--accent-green); margin: 1.75rem 0 0.75rem; font-size: 1.1rem;">
+                    2. Physical Testbench Measurements (125 s Full Transmission @ 14.230 MHz USB)
+                </h3>
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Measured Parameter</th>
+                                <th>Standard 1080p @ 60 Hz Mode (Lab)</th>
+                                <th>Custom 800×2000 @ 60 Hz Mode (Out-of-Band Validated)</th>
+                                <th>Operational Impact & Regulatory Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Pixel Clock ($PCLK$)</strong></td>
+                                <td>148.50 MHz</td>
+                                <td class="highlight">120.00 MHz</td>
+                                <td>Hardware D/A conversion clock rate</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Horizontal Line Rate ($f_H$)</strong></td>
+                                <td>67.50 kHz</td>
+                                <td class="highlight">125.000 kHz</td>
+                                <td>Harmonic spur frequency spacing</td>
+                            </tr>
+                            <tr>
+                                <td><strong>First Upper Spur ($f_c + f_H$)</strong></td>
+                                <td>14.2975 MHz (Inside 20m band)</td>
+                                <td class="highlight">14.355 MHz (Strictly outside 20m band!)</td>
+                                <td>Pushed beyond ITU amateur band limit (14.350 MHz)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Pollution in SSB Phone Sub-band</strong></td>
+                                <td style="color: #f87171;">Present (±67.5 kHz spurs)</td>
+                                <td class="highlight">ELIMINATED (100% Clean)</td>
+                                <td>Sub-band 14.150–14.350 MHz completely free of spurs</td>
+                            </tr>
+                            <tr>
+                                <td><strong>GPU Delayed Frames</strong></td>
+                                <td>0 (0.0 %)</td>
+                                <td class="highlight">0 (0.0 %)</td>
+                                <td>Perfect real-time deterministic streaming</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Decoded Image Slant</strong></td>
+                                <td>Slope = 0 (perfect vertical)</td>
+                                <td class="highlight">Slope = 0 (perfect vertical)</td>
+                                <td>Zero temporal jitter, clock drift < 6.5 PPM</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Decoded Scanline Ratio</strong></td>
+                                <td>256 / 256 lines (100 %)</td>
+                                <td class="highlight">256 / 256 lines (100 %)</td>
+                                <td>Entire test pattern received with zero dropped lines</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Peak Signal-to-Noise Ratio (PSNR)</strong></td>
+                                <td>19.56 dB</td>
+                                <td class="highlight">16.62 dB</td>
+                                <td>High contrast and crisp text readability</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Pearson Correlation (Green)</strong></td>
+                                <td>+0.977 (97.7 %)</td>
+                                <td class="highlight">+0.959 (95.9 %)</td>
+                                <td>Exceptional chromatic fidelity</td>
+                            </tr>
+                            <tr>
+                                <td><strong>QSSTV & Robot36 Auto-Recognition</strong></td>
+                                <td>100 % automated</td>
+                                <td class="highlight">100 % automated</td>
+                                <td>Fully compliant with international amateur software</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="tech-box green" style="margin-top: 1.5rem;">
+                    <strong>Conclusion from Physical Experiments (October 9, 2026):</strong>
+                    Experimental bench testing confirms that repurposing the RAMDAC of a consumer-grade graphics card not only synthesizes 
+                    pristine radio image transmissions, but that fine mastery of video raster timings (Custom Modeline $800\times 2000$) provides 
+                    an elegant, novel solution to regulatory spectral compliance without requiring cumbersome multi-pole crystal ladder filters.
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>Experimental project <strong>vga-hamradio</strong> — Designed by Loïc Fejoz (F4JXQ) & Antigravity Assistant</p>
+        <p style="margin-top: 0.5rem; font-size: 0.8rem;">
+            Technical Documentation: 
+            <a href="README.en.md">README.en.md</a> | 
+            <a href="DEEP-RESEARCH.md">DEEP-RESEARCH.md</a> | 
+            <a href="DEEP-RESEARCH-REMARKS.md">DEEP-RESEARCH-REMARKS.md</a> | 
+            <a href="CURRENT_STATE.md">CURRENT_STATE.md</a>
+        </p>
+        <p style="margin-top: 0.5rem; color: #475569;">73 de F4JXQ! 📻 Happy amateur radio experiments!</p>
+    </footer>
+
+    <!-- INTERACTIVE ANIMATION ENGINE SCRIPT -->
+    <script>
+        // Tab Management
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            const targetContent = document.getElementById(tabId);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+
+            const buttons = document.querySelectorAll('.tab-btn');
+            const tabMap = {
+                'tab-diff': 0,
+                'tab-shader': 1,
+                'tab-phase': 2,
+                'tab-mode800': 3,
+                'tab-sstv': 4,
+                'tab-matrix': 5
+            };
+            if (buttons[tabMap[tabId]]) {
+                buttons[tabMap[tabId]].classList.add('active');
+            }
+
+            window.dispatchEvent(new Event('resize'));
+        }
+
+        // =========================================================================
+        // ANIMATION 1 : PRIOR ART VS OUR APPROACH PIPELINE
+        // =========================================================================
+        const canvasPipeline = document.getElementById('canvas-pipeline');
+        const ctxPipe = canvasPipeline.getContext('2d');
+        let pipeRunning = true;
+        let pipeTime = 0;
+        let pipeParticles = [];
+
+        function toggleFlowAnim() {
+            pipeRunning = !pipeRunning;
+            document.getElementById('btn-flow-play').textContent = pipeRunning ? '⏸ Pause' : '▶ Resume';
+        }
+
+        function resetFlowAnim() {
+            pipeTime = 0;
+            pipeParticles = [];
+        }
+
+        class Particle {
+            constructor(track, speedMult) {
+                this.track = track; // 0: Legacy (top), 1: Ours (bottom)
+                this.x = 80;
+                this.speedMult = speedMult;
+                this.progress = 0;
+                this.stalled = false;
+                this.size = track === 0 ? 8 : 6;
+                this.color = track === 0 ? '#ef4444' : '#00f0ff';
+            }
+
+            update(speed) {
+                if (this.track === 0) {
+                    // Legacy: stalls in PCIe bottleneck
+                    if (this.progress > 0.35 && this.progress < 0.65) {
+                        this.progress += 0.002 * speed * this.speedMult;
+                        this.stalled = true;
+                    } else {
+                        this.progress += 0.008 * speed * this.speedMult;
+                        this.stalled = false;
+                    }
+                } else {
+                    // Ours: ultra-fluid once in GPU
+                    if (this.progress < 0.25) {
+                        this.progress += 0.006 * speed * this.speedMult;
+                    } else {
+                        this.progress += 0.015 * speed * this.speedMult;
+                    }
+                }
+            }
+        }
+
+        function drawPipelineAnim() {
+            if (!canvasPipeline) return;
+            const width = canvasPipeline.width;
+            const height = canvasPipeline.height;
+            const speed = parseFloat(document.getElementById('flow-speed')?.value || '1');
+
+            ctxPipe.fillStyle = '#060a14';
+            ctxPipe.fillRect(0, 0, width, height);
+
+            // Background Grid
+            ctxPipe.strokeStyle = '#0f172a';
+            ctxPipe.lineWidth = 1;
+            for (let x = 0; x < width; x += 40) {
+                ctxPipe.beginPath();
+                ctxPipe.moveTo(x, 0);
+                ctxPipe.lineTo(x, height);
+                ctxPipe.stroke();
+            }
+            for (let y = 0; y < height; y += 40) {
+                ctxPipe.beginPath();
+                ctxPipe.moveTo(0, y);
+                ctxPipe.lineTo(width, y);
+                ctxPipe.stroke();
+            }
+
+            // -------------------------------------------------------------
+            // TRACK 1 : PRIOR ART (TOP)
+            // -------------------------------------------------------------
+            const y1 = 110;
+            ctxPipe.fillStyle = '#1e293b';
+            ctxPipe.font = 'bold 14px var(--font-sans)';
+            ctxPipe.fillText('CONVENTIONAL APPROACH (CPU-BOUND BITMAPS: 1998-2025)', 40, y1 - 65);
+
+            // Track 1 Nodes
+            drawNode(ctxPipe, 60, y1 - 40, 160, 80, 'Host CPU', 'Calculates 150M pixels/s', '#334155', '#94a3b8');
+            drawNode(ctxPipe, 380, y1 - 40, 160, 80, 'PCIe / USB Bus', 'BOTTLENECK CONGESTION', '#7f1d1d', '#f87171');
+            drawNode(ctxPipe, 700, y1 - 40, 160, 80, 'Framebuffer VRAM', 'Write saturation (150 MB/s)', '#334155', '#94a3b8');
+            drawNode(ctxPipe, 1000, y1 - 40, 140, 80, 'VGA Port (RF)', 'Jitter & Frame Skips', '#450a0a', '#fca5a5');
+
+            // Track 1 Pipes
+            drawPipe(ctxPipe, 220, y1, 380, y1, '#475569');
+            drawPipe(ctxPipe, 540, y1, 700, y1, '#7f1d1d', true);
+            drawPipe(ctxPipe, 860, y1, 1000, y1, '#475569');
+
+            // -------------------------------------------------------------
+            // TRACK 2 : OUR APPROACH (BOTTOM)
+            // -------------------------------------------------------------
+            const y2 = 300;
+            ctxPipe.fillStyle = '#0284c7';
+            ctxPipe.font = 'bold 14px var(--font-sans)';
+            ctxPipe.fillText('OUR HYBRID ARCHITECTURE: GPU FRAGMENT SHADER SDR (2026)', 40, y2 - 65);
+
+            drawNode(ctxPipe, 60, y2 - 40, 160, 80, 'Python CPU (Audio)', 'I/Q Baseband 48 kHz (light)', '#0369a1', '#38bdf8');
+            drawNode(ctxPipe, 380, y2 - 40, 160, 80, 'VRAM Texture RG32F', 'Single-pass upload (42 MB)', '#065f46', '#34d399');
+            drawNode(ctxPipe, 700, y2 - 40, 160, 80, 'GPU Cores (GLSL)', 'Per-pixel 32-bit DDS & SSB', '#047857', '#10b981');
+            drawNode(ctxPipe, 1000, y2 - 40, 140, 80, 'VGA Pin 1 (RF)', '14.230 MHz Pure USB', '#064e3b', '#6ee7b7');
+
+            drawPipe(ctxPipe, 220, y2, 380, y2, '#0284c7');
+            drawPipe(ctxPipe, 540, y2, 700, y2, '#10b981');
+            drawPipe(ctxPipe, 860, y2, 1000, y2, '#10b981');
+
+            // Particle Emission
+            if (pipeRunning && Math.random() < 0.15) {
+                pipeParticles.push(new Particle(0, 0.8 + Math.random() * 0.4));
+            }
+            if (pipeRunning && Math.random() < 0.25) {
+                pipeParticles.push(new Particle(1, 0.9 + Math.random() * 0.2));
+            }
+
+            // Particle Updates & Render
+            for (let i = pipeParticles.length - 1; i >= 0; i--) {
+                const p = pipeParticles[i];
+                if (pipeRunning) p.update(speed);
+
+                let startX = 140;
+                let endX = 1070;
+                let curX = startX + p.progress * (endX - startX);
+                let curY = p.track === 0 ? y1 : y2;
+
+                ctxPipe.fillStyle = p.stalled ? '#f59e0b' : p.color;
+                ctxPipe.shadowColor = p.color;
+                ctxPipe.shadowBlur = p.track === 1 ? 10 : 4;
+                ctxPipe.beginPath();
+                ctxPipe.arc(curX, curY, p.size, 0, Math.PI * 2);
+                ctxPipe.fill();
+                ctxPipe.shadowBlur = 0;
+
+                if (p.progress >= 1) {
+                    pipeParticles.splice(i, 1);
+                }
+            }
+
+            if (pipeRunning) {
+                pipeTime += 0.02 * speed;
+            }
+            requestAnimationFrame(drawPipelineAnim);
+        }
+
+        function drawNode(ctx, x, y, w, h, title, subtitle, bg, border) {
+            ctx.fillStyle = bg;
+            ctx.strokeStyle = border;
+            ctx.lineWidth = 2;
+            roundRect(ctx, x, y, w, h, 8, true, true);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px var(--font-sans)';
+            ctx.textAlign = 'center';
+            ctx.fillText(title, x + w / 2, y + 32);
+
+            ctx.fillStyle = border;
+            ctx.font = '10px var(--font-mono)';
+            ctx.fillText(subtitle, x + w / 2, y + 54);
+            ctx.textAlign = 'left';
+        }
+
+        function drawPipe(ctx, x1, y1, x2, y2, color, clogged = false) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 14;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            ctx.strokeStyle = clogged ? '#ef4444' : '#0a0e17';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            if (clogged) {
+                ctx.fillStyle = '#fca5a5';
+                ctx.font = 'bold 9px var(--font-mono)';
+                ctx.fillText('! CONGESTED !', (x1 + x2) / 2 - 32, y1 - 12);
+            }
+        }
+
+        function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+            if (fill) ctx.fill();
+            if (stroke) ctx.stroke();
+        }
+
+        // =========================================================================
+        // ANIMATION 2 : FRAGMENT SHADER & RAMDAC SCANOUT
+        // =========================================================================
+        const canvasShader = document.getElementById('canvas-shader');
+        const ctxShader = canvasShader.getContext('2d');
+        let shaderRunning = true;
+        let scanX = 0;
+        let scanY = 0;
+        let oscHistory = [];
+
+        function toggleShaderAnim() {
+            shaderRunning = !shaderRunning;
+            document.getElementById('btn-shader-play').textContent = shaderRunning ? '⏸ Pause' : '▶ Resume';
+        }
+
+        const audioSlider = document.getElementById('audio-freq-slider');
+        const audioDisp = document.getElementById('audio-freq-val');
+        if (audioSlider) {
+            audioSlider.addEventListener('input', (e) => {
+                if (audioDisp) audioDisp.textContent = e.target.value + ' Hz';
+            });
+        }
+
+        function drawShaderAnim() {
+            if (!canvasShader) return;
+            const width = canvasShader.width;
+            const height = canvasShader.height;
+
+            ctxShader.fillStyle = '#060a14';
+            ctxShader.fillRect(0, 0, width, height);
+
+            // -------------------------------------------------------------
+            // LEFT SECTION : VIRTUAL DISPLAY RASTER SCAN (0 - 550)
+            // -------------------------------------------------------------
+            const screenW = 440;
+            const screenH = 340;
+            const screenX = 40;
+            const screenY = 50;
+
+            ctxShader.fillStyle = '#0b1120';
+            ctxShader.strokeStyle = '#1e293b';
+            ctxShader.lineWidth = 2;
+            roundRect(ctxShader, screenX, screenY, screenW, screenH, 8, true, true);
+
+            ctxShader.fillStyle = '#38bdf8';
+            ctxShader.font = 'bold 12px var(--font-sans)';
+            ctxShader.fillText('1080p SCREEN / SCANLINE-BY-SCANLINE RAMDAC OUTPUT', screenX, screenY - 15);
+
+            const activeW = screenW * 0.85;
+            const activeH = screenH * 0.88;
+            ctxShader.fillStyle = '#030712';
+            ctxShader.fillRect(screenX + 5, screenY + 5, activeW, activeH);
+
+            ctxShader.fillStyle = '#334155';
+            ctxShader.fillRect(screenX + activeW + 8, screenY + 5, screenW - activeW - 13, activeH);
+            ctxShader.fillRect(screenX + 5, screenY + activeH + 8, screenW - 10, screenH - activeH - 13);
+
+            ctxShader.fillStyle = '#64748b';
+            ctxShader.font = '9px var(--font-mono)';
+            ctxShader.fillText('H-BLANK', screenX + activeW + 12, screenY + activeH / 2);
+            ctxShader.fillText('V-BLANK (VERTICAL PORCH)', screenX + activeW / 3, screenY + screenH - 8);
+
+            if (shaderRunning) {
+                scanX += 6;
+                if (scanX > screenW - 10) {
+                    scanX = 0;
+                    scanY += 8;
+                    if (scanY > screenH - 10) {
+                        scanY = 0;
+                    }
+                }
+            }
+
+            const currentPixelX = screenX + 5 + scanX;
+            const currentPixelY = screenY + 5 + scanY;
+            const inActiveArea = (scanX < activeW) && (scanY < activeH);
+
+            ctxShader.strokeStyle = 'rgba(0, 240, 255, 0.08)';
+            ctxShader.lineWidth = 2;
+            for (let y = 0; y < scanY; y += 8) {
+                ctxShader.beginPath();
+                ctxShader.moveTo(screenX + 5, screenY + 5 + y);
+                ctxShader.lineTo(screenX + 5 + activeW, screenY + 5 + y);
+                ctxShader.stroke();
+            }
+
+            ctxShader.fillStyle = inActiveArea ? '#00f0ff' : '#475569';
+            ctxShader.shadowColor = inActiveArea ? '#00f0ff' : '#000000';
+            ctxShader.shadowBlur = inActiveArea ? 12 : 0;
+            ctxShader.beginPath();
+            ctxShader.arc(currentPixelX, currentPixelY, 5, 0, Math.PI * 2);
+            ctxShader.fill();
+            ctxShader.shadowBlur = 0;
+
+            ctxShader.fillStyle = '#94a3b8';
+            ctxShader.font = '10px var(--font-mono)';
+            ctxShader.fillText(`gl_FragCoord: (${Math.floor(scanX * 4.36)}, ${Math.floor(scanY * 3.17)})`, screenX, screenY + screenH + 25);
+            ctxShader.fillText(`DAC Status: ${inActiveArea ? 'ACTIVE (Pin 1 = RF)' : 'BLANKED (0.0 V)'}`, screenX + 220, screenY + screenH + 25);
+
+            // -------------------------------------------------------------
+            // RIGHT SECTION : MATH COMPUTATION & REAL-TIME OSCILLOSCOPE
+            // -------------------------------------------------------------
+            const rightX = 530;
+            const rightW = 630;
+
+            ctxShader.fillStyle = '#0b1120';
+            ctxShader.strokeStyle = '#1e293b';
+            roundRect(ctxShader, rightX, screenY, rightW, 140, 8, true, true);
+
+            ctxShader.fillStyle = '#10b981';
+            ctxShader.font = 'bold 12px var(--font-sans)';
+            ctxShader.fillText('INSTANTANEOUS ARITHMETIC (GLSL FRAGMENT SHADER)', rightX + 15, screenY + 22);
+
+            const rfScale = parseFloat(document.getElementById('rf-freq-slider')?.value || '4');
+            const audioHz = parseFloat(document.getElementById('audio-freq-slider')?.value || '1900');
+            const t = Date.now() * 0.005;
+
+            const theta_c = (t * rfScale) % (Math.PI * 2);
+            const phi_audio = (t * (audioHz / 300)) % (Math.PI * 2);
+            const I = Math.cos(phi_audio);
+            const Q = Math.sin(phi_audio);
+            let rf_val = inActiveArea ? (I * Math.cos(theta_c) - Q * Math.sin(theta_c)) : 0;
+            let dac_voltage = inActiveArea ? (0.35 + 0.35 * rf_val) : 0.0;
+
+            ctxShader.fillStyle = '#cbd5e1';
+            ctxShader.font = '11px var(--font-mono)';
+            ctxShader.fillText(`1. DDS Carrier 14.230 MHz: θ_c = ${theta_c.toFixed(3)} rad`, rightX + 15, screenY + 50);
+            ctxShader.fillText(`2. VRAM Float32 Texture : I(t) = ${I.toFixed(2)}, Q(t) = ${Q.toFixed(2)} (Martin 1)`, rightX + 15, screenY + 72);
+            ctxShader.fillText(`3. Cartesian SSB Mixer  : RF(t) = I·cos(θ) - Q·sin(θ) = ${rf_val.toFixed(2)}`, rightX + 15, screenY + 94);
+            ctxShader.fillText(`4. Analog Pin 1 Output  : V_out = ${dac_voltage.toFixed(3)} V (0.0V to 0.7V)`, rightX + 15, screenY + 116);
+
+            const oscY = screenY + 160;
+            const oscH = 180;
+            ctxShader.fillStyle = '#030712';
+            ctxShader.strokeStyle = '#1e293b';
+            roundRect(ctxShader, rightX, oscY, rightW, oscH, 8, true, true);
+
+            ctxShader.fillStyle = '#00f0ff';
+            ctxShader.font = 'bold 11px var(--font-sans)';
+            ctxShader.fillText('ANALOG RF OSCILLOSCOPE: PIN 1 OF VGA CONNECTOR (RED DAC)', rightX + 15, oscY + 20);
+
+            ctxShader.strokeStyle = '#0f172a';
+            ctxShader.lineWidth = 1;
+            for (let x = rightX; x < rightX + rightW; x += 30) {
+                ctxShader.beginPath();
+                ctxShader.moveTo(x, oscY + 30);
+                ctxShader.lineTo(x, oscY + oscH);
+                ctxShader.stroke();
+            }
+            ctxShader.beginPath();
+            ctxShader.moveTo(rightX, oscY + oscH / 2 + 10);
+            ctxShader.lineTo(rightX + rightW, oscY + oscH / 2 + 10);
+            ctxShader.strokeStyle = '#1e293b';
+            ctxShader.stroke();
+
+            if (shaderRunning) {
+                oscHistory.push(dac_voltage);
+                if (oscHistory.length > rightW - 30) {
+                    oscHistory.shift();
+                }
+            }
+
+            ctxShader.strokeStyle = inActiveArea ? '#00f0ff' : '#475569';
+            ctxShader.lineWidth = 2;
+            ctxShader.shadowColor = inActiveArea ? '#00f0ff' : '#000000';
+            ctxShader.shadowBlur = inActiveArea ? 8 : 0;
+            ctxShader.beginPath();
+            const startOscX = rightX + 15;
+            const midOscY = oscY + oscH / 2 + 10;
+            for (let i = 0; i < oscHistory.length; i++) {
+                const yOffset = (oscHistory[i] - 0.35) * 140;
+                const ptX = startOscX + i;
+                const ptY = midOscY - yOffset;
+                if (i === 0) ctxShader.moveTo(ptX, ptY);
+                else ctxShader.lineTo(ptX, ptY);
+            }
+            ctxShader.stroke();
+            ctxShader.shadowBlur = 0;
+
+            requestAnimationFrame(drawShaderAnim);
+        }
+
+        // =========================================================================
+        // ANIMATION 3 : PHASE COHERENCE ACROSS BLANKING
+        // =========================================================================
+        const canvasPhase = document.getElementById('canvas-phase');
+        const ctxPhase = canvasPhase.getContext('2d');
+        let phaseMode = 'ours'; // 'naive' or 'ours'
+        let phaseRunning = true;
+        let phaseT = 0;
+
+        function setPhaseMode(mode) {
+            phaseMode = mode;
+            document.getElementById('btn-phase-naive').classList.toggle('active', mode === 'naive');
+            document.getElementById('btn-phase-ours').classList.toggle('active', mode === 'ours');
+            document.getElementById('phase-tag').textContent = mode === 'ours' ? 
+                'OUR POC APPROACH: ABSOLUTE PHASE COHERENCE' : 'NAIVE APPROACH: PHASE RUPTURE & JUMP';
+            document.getElementById('phase-tag').style.borderColor = mode === 'ours' ? '#10b981' : '#ef4444';
+            document.getElementById('phase-tag').style.color = mode === 'ours' ? '#10b981' : '#ef4444';
+        }
+
+        function togglePhaseAnim() {
+            phaseRunning = !phaseRunning;
+            document.getElementById('btn-phase-toggle').textContent = phaseRunning ? '⏸ Pause' : '▶ Resume';
+        }
+
+        function drawPhaseAnim() {
+            if (!canvasPhase) return;
+            const width = canvasPhase.width;
+            const height = canvasPhase.height;
+
+            ctxPhase.fillStyle = '#060a14';
+            ctxPhase.fillRect(0, 0, width, height);
+
+            const midY = height / 2;
+            const lineLen = 1100;
+            const startX = 50;
+
+            ctxPhase.fillStyle = '#94a3b8';
+            ctxPhase.font = 'bold 13px var(--font-sans)';
+            ctxPhase.fillText('HARDWARE LINE SCAN TIMING (ACTIVE LINE -> H-BLANK PORCH -> NEW ACTIVE LINE)', startX, 40);
+
+            const tActive1 = 380;
+            const tBlank = 240;
+            const tActive2 = 380;
+
+            const xActive1 = startX;
+            const xBlank = xActive1 + tActive1;
+            const xActive2 = xBlank + tBlank;
+
+            ctxPhase.fillStyle = 'rgba(16, 185, 129, 0.05)';
+            ctxPhase.fillRect(xActive1, 60, tActive1, height - 90);
+
+            ctxPhase.fillStyle = 'rgba(239, 68, 68, 0.08)';
+            ctxPhase.fillRect(xBlank, 60, tBlank, height - 90);
+
+            ctxPhase.fillStyle = 'rgba(16, 185, 129, 0.05)';
+            ctxPhase.fillRect(xActive2, 60, tActive2, height - 90);
+
+            ctxPhase.fillStyle = '#34d399';
+            ctxPhase.font = 'bold 11px var(--font-mono)';
+            ctxPhase.fillText('ACTIVE LINE N (DAC ACTIVE)', xActive1 + 20, 85);
+            ctxPhase.fillText('ACTIVE LINE N+1 (RESUMPTION)', xActive2 + 20, 85);
+
+            ctxPhase.fillStyle = '#f87171';
+            ctxPhase.fillText('BLANKING PORCH (DAC = 0 V)', xBlank + 25, 85);
+
+            ctxPhase.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctxPhase.setLineDash([4, 4]);
+            ctxPhase.lineWidth = 1.5;
+            ctxPhase.beginPath();
+            for (let x = 0; x < lineLen; x += 2) {
+                let waveY = midY + Math.sin((x * 0.08) - phaseT) * 70;
+                if (x === 0) ctxPhase.moveTo(startX + x, waveY);
+                else ctxPhase.lineTo(startX + x, waveY);
+            }
+            ctxPhase.stroke();
+            ctxPhase.setLineDash([]);
+
+            ctxPhase.fillStyle = '#64748b';
+            ctxPhase.font = '10px var(--font-sans)';
+            ctxPhase.fillText('··· Continuous virtual mathematical phase', startX + lineLen - 260, midY - 85);
+
+            ctxPhase.lineWidth = 3;
+            ctxPhase.shadowBlur = 10;
+
+            if (phaseMode === 'ours') {
+                ctxPhase.strokeStyle = '#10b981';
+                ctxPhase.shadowColor = '#10b981';
+
+                ctxPhase.beginPath();
+                for (let x = 0; x < tActive1; x += 2) {
+                    let waveY = midY + Math.sin((x * 0.08) - phaseT) * 70;
+                    if (x === 0) ctxPhase.moveTo(xActive1 + x, waveY);
+                    else ctxPhase.lineTo(xActive1 + x, waveY);
+                }
+                ctxPhase.stroke();
+
+                ctxPhase.strokeStyle = '#64748b';
+                ctxPhase.beginPath();
+                ctxPhase.moveTo(xBlank, midY);
+                ctxPhase.lineTo(xBlank + tBlank, midY);
+                ctxPhase.stroke();
+
+                ctxPhase.strokeStyle = '#10b981';
+                ctxPhase.beginPath();
+                for (let x = 0; x < tActive2; x += 2) {
+                    let globalX = tActive1 + tBlank + x;
+                    let waveY = midY + Math.sin((globalX * 0.08) - phaseT) * 70;
+                    if (x === 0) ctxPhase.moveTo(xActive2 + x, waveY);
+                    else ctxPhase.lineTo(xActive2 + x, waveY);
+                }
+                ctxPhase.stroke();
+
+                ctxPhase.fillStyle = '#34d399';
+                ctxPhase.font = 'bold 12px var(--font-sans)';
+                ctxPhase.fillText('✓ Seamless phase resumption (Δθ = 0)', xActive2 + 20, midY + 110);
+
+            } else {
+                ctxPhase.strokeStyle = '#ef4444';
+                ctxPhase.shadowColor = '#ef4444';
+
+                ctxPhase.beginPath();
+                for (let x = 0; x < tActive1; x += 2) {
+                    let waveY = midY + Math.sin((x * 0.08) - phaseT) * 70;
+                    if (x === 0) ctxPhase.moveTo(xActive1 + x, waveY);
+                    else ctxPhase.lineTo(xActive1 + x, waveY);
+                }
+                ctxPhase.stroke();
+
+                ctxPhase.strokeStyle = '#64748b';
+                ctxPhase.beginPath();
+                ctxPhase.moveTo(xBlank, midY);
+                ctxPhase.lineTo(xBlank + tBlank, midY);
+                ctxPhase.stroke();
+
+                ctxPhase.strokeStyle = '#ef4444';
+                ctxPhase.beginPath();
+                const phaseJump = 2.4;
+                for (let x = 0; x < tActive2; x += 2) {
+                    let waveY = midY + Math.sin((x * 0.08) - phaseT + phaseJump) * 70;
+                    if (x === 0) ctxPhase.moveTo(xActive2 + x, waveY);
+                    else ctxPhase.lineTo(xActive2 + x, waveY);
+                }
+                ctxPhase.stroke();
+
+                ctxPhase.fillStyle = '#f87171';
+                ctxPhase.font = 'bold 12px var(--font-sans)';
+                ctxPhase.fillText('⚠ PHASE RUPTURE (SPECTRAL SPLATTER)', xActive2 + 20, midY + 110);
+                
+                ctxPhase.strokeStyle = '#ef4444';
+                ctxPhase.lineWidth = 1;
+                ctxPhase.beginPath();
+                ctxPhase.moveTo(xActive2, midY - 60);
+                ctxPhase.lineTo(xActive2, midY + 60);
+                ctxPhase.stroke();
+            }
+
+            ctxPhase.shadowBlur = 0;
+
+            if (phaseRunning) {
+                phaseT += 0.06;
+            }
+            requestAnimationFrame(drawPhaseAnim);
+        }
+
+        // =========================================================================
+        // ANIMATION 4 : THE SPECTRAL DILEMMA & THE 800x2000 BREAKTHROUGH
+        // =========================================================================
+        const canvasMode = document.getElementById('canvas-mode');
+        const ctxMode = canvasMode.getContext('2d');
+        let currentMode = '800_2000';
+
+        const modeData = {
+            '1080p': {
+                name: 'Standard 1080p @ 60 Hz Mode (Lab)',
+                pclk: '148.50 MHz',
+                fH: 67.50,
+                spur1: 14.230 + 0.0675,
+                spur2: 14.230 - 0.0675,
+                inBand: true,
+                drops: '0 frames (0.0 %)',
+                slope: 'Slope = 0 (vertical)',
+                psnr: '19.56 dB',
+                defect: 'Pollution inside SSB 20m Band: Line rate spurs at ±67.5 kHz land at 14.1625 MHz and 14.2975 MHz, directly in the amateur phone sub-band!'
+            },
+            '800_200hz': {
+                name: '800×600 @ 201 Hz Mode (Rejected)',
+                pclk: '120.00 MHz',
+                fH: 125.00,
+                spur1: 14.230 + 0.125,
+                spur2: 14.230 - 0.125,
+                inBand: false,
+                drops: '36 frames / 35s (0.5 %)',
+                slope: 'SEVERE SLANT (Drift: 5100 PPM)',
+                psnr: '< 5 dB',
+                defect: 'GPU Scheduling Failure: At 201 Hz (T = 4.96 ms), Nouveau driver misses 0.5% vsyncs. Each missed frame freezes transmission, producing severe image shear!'
+            },
+            '800_blank': {
+                name: '800×600 Extended Blanking 60 Hz Mode (Rejected)',
+                pclk: '120.00 MHz',
+                fH: 125.00,
+                spur1: 14.230 + 0.125,
+                spur2: 14.230 - 0.125,
+                inBand: false,
+                drops: '0 frames',
+                slope: 'Slope = 0',
+                psnr: '< 8 dB',
+                defect: 'Blanking Ratio Failure: Forcing fH = 125 kHz at 60 Hz with 600 active lines creates a 71% vertical blanking interval! DAC is off 11.8 ms every 16.6 ms, cutting severe horizontal black stripes.'
+            },
+            '800_2000': {
+                name: '★ Custom 800×2000 @ 60 Hz Modeline (Validated Out-of-Band)',
+                pclk: '120.00 MHz',
+                fH: 125.00,
+                spur1: 14.355, // Strictly out of 20m band!
+                spur2: 14.105,
+                inBand: false,
+                drops: '0 frames (0.0 %)',
+                slope: 'Slope = 0 (perfect vertical alignment)',
+                psnr: '16.62 dB (Fidelity 96%)',
+                defect: 'BREAKTHROUGH ACHIEVED: fH = 125 kHz pushes the 1st upper spur to 14.355 MHz (> 14.350 MHz, OUT OF 20M BAND!). Rock-solid 60 Hz refresh with 0 frame drops and 96% RF duty cycle.'
+            }
+        };
+
+        function setVideoMode(modeKey) {
+            currentMode = modeKey;
+            ['1080', '200hz', 'blank', '800'].forEach(id => {
+                const btn = document.getElementById(`btn-mode-${id}`);
+                if (btn) btn.classList.remove('active');
+            });
+
+            if (modeKey === '1080p') document.getElementById('btn-mode-1080').classList.add('active');
+            if (modeKey === '800_200hz') document.getElementById('btn-mode-200hz').classList.add('active');
+            if (modeKey === '800_blank') document.getElementById('btn-mode-wideblank').classList.add('active');
+            if (modeKey === '800_2000') document.getElementById('btn-mode-800').classList.add('active');
+
+            const m = modeData[modeKey];
+            document.getElementById('mode-explanation').innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <strong style="color: ${m.inBand ? '#f59e0b' : (modeKey === '800_2000' ? '#10b981' : '#ef4444')}; font-size: 1.1rem;">
+                        ${m.name}
+                    </strong>
+                    <span style="font-family: var(--font-mono); font-size: 0.85rem; color: #94a3b8;">
+                        PCLK: ${m.pclk} | f_H: ${m.fH} kHz | Delayed Frames: ${m.drops}
+                    </span>
+                </div>
+                <p style="color: #cbd5e1; font-size: 0.9rem; margin-bottom: 0.5rem;">${m.defect}</p>
+                <div style="display: flex; gap: 1.5rem; font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-cyan);">
+                    <span>• SSTV Alignment: <strong>${m.slope}</strong></span>
+                    <span>• PSNR: <strong>${m.psnr}</strong></span>
+                    <span>• 1st Upper Spur: <strong>${m.spur1.toFixed(4)} MHz</strong> ${m.spur1 > 14.350 ? '(OUT OF 20M BAND ✓)' : '(INSIDE 20M BAND ⚠)'}</span>
+                </div>
+            `;
+            drawModeSpectrogram();
+        }
+
+        function drawModeSpectrogram() {
+            if (!canvasMode) return;
+            const width = canvasMode.width;
+            const height = canvasMode.height;
+            const m = modeData[currentMode];
+
+            ctxMode.fillStyle = '#060a14';
+            ctxMode.fillRect(0, 0, width, height);
+
+            const specX = 50;
+            const specY = 40;
+            const specW = 760;
+            const specH = 360;
+
+            ctxMode.fillStyle = '#030712';
+            ctxMode.strokeStyle = '#1e293b';
+            roundRect(ctxMode, specX, specY, specW, specH, 8, true, true);
+
+            ctxMode.fillStyle = '#38bdf8';
+            ctxMode.font = 'bold 12px var(--font-sans)';
+            ctxMode.fillText('HF RF SPECTRUM ANALYZER: 20-METER AMATEUR BAND (14.000 - 14.400 MHz)', specX + 15, specY + 22);
+
+            const fMin = 14.050;
+            const fMax = 14.400;
+            function freqToX(f) {
+                return specX + 40 + ((f - fMin) / (fMax - fMin)) * (specW - 80);
+            }
+
+            const xBandStart = freqToX(14.000 < fMin ? fMin : 14.000);
+            const xBandEnd = freqToX(14.350);
+            const xSsbStart = freqToX(14.150);
+
+            ctxMode.fillStyle = 'rgba(16, 185, 129, 0.06)';
+            ctxMode.fillRect(xBandStart, specY + 35, xBandEnd - xBandStart, specH - 55);
+
+            ctxMode.fillStyle = 'rgba(56, 189, 248, 0.08)';
+            ctxMode.fillRect(xSsbStart, specY + 35, xBandEnd - xSsbStart, specH - 55);
+
+            ctxMode.strokeStyle = '#10b981';
+            ctxMode.lineWidth = 1;
+            ctxMode.setLineDash([4, 4]);
+            ctxMode.beginPath();
+            ctxMode.moveTo(xBandEnd, specY + 35);
+            ctxMode.lineTo(xBandEnd, specY + specH - 20);
+            ctxMode.stroke();
+            ctxMode.setLineDash([]);
+
+            ctxMode.fillStyle = '#10b981';
+            ctxMode.font = '10px var(--font-mono)';
+            ctxMode.fillText('20M UPPER LIMIT: 14.350 MHz', xBandEnd - 70, specY + 50);
+
+            const xCarrier = freqToX(14.230);
+            const yNoise = specY + specH - 45;
+
+            ctxMode.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctxMode.lineWidth = 1.5;
+            ctxMode.beginPath();
+            for (let x = specX + 40; x <= specX + specW - 40; x += 4) {
+                let ny = yNoise + (Math.random() * 8 - 4);
+                if (x === specX + 40) ctxMode.moveTo(x, ny);
+                else ctxMode.lineTo(x, ny);
+            }
+            ctxMode.stroke();
+
+            ctxMode.strokeStyle = '#00f0ff';
+            ctxMode.fillStyle = 'rgba(0, 240, 255, 0.2)';
+            ctxMode.lineWidth = 2.5;
+            ctxMode.beginPath();
+            ctxMode.moveTo(xCarrier - 18, yNoise);
+            ctxMode.lineTo(xCarrier, specY + 60);
+            ctxMode.lineTo(xCarrier + 18, yNoise);
+            ctxMode.fill();
+            ctxMode.stroke();
+
+            ctxMode.fillStyle = '#00f0ff';
+            ctxMode.font = 'bold 11px var(--font-mono)';
+            ctxMode.fillText('fc: 14.230 MHz (USB SSTV)', xCarrier - 60, specY + 55);
+
+            const xSpurHigh = freqToX(m.spur1);
+            const xSpurLow = freqToX(m.spur2);
+            const spurHeight = specY + 140;
+
+            const spurColor = m.spur1 > 14.350 ? '#10b981' : '#ef4444';
+
+            ctxMode.strokeStyle = spurColor;
+            ctxMode.fillStyle = spurColor === '#10b981' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+            ctxMode.lineWidth = 2;
+            ctxMode.beginPath();
+            ctxMode.moveTo(xSpurHigh - 12, yNoise);
+            ctxMode.lineTo(xSpurHigh, spurHeight);
+            ctxMode.lineTo(xSpurHigh + 12, yNoise);
+            ctxMode.fill();
+            ctxMode.stroke();
+
+            ctxMode.fillStyle = spurColor;
+            ctxMode.font = 'bold 10px var(--font-mono)';
+            ctxMode.fillText(`+f_H: ${m.spur1.toFixed(3)} MHz`, xSpurHigh - 45, spurHeight - 8);
+            if (m.spur1 > 14.350) {
+                ctxMode.fillText('✓ OUT OF 20M BAND!', xSpurHigh - 45, spurHeight + 20);
+            } else {
+                ctxMode.fillText('⚠ IN SSB PHONE BAND!', xSpurHigh - 45, spurHeight + 20);
+            }
+
+            ctxMode.strokeStyle = '#94a3b8';
+            ctxMode.beginPath();
+            ctxMode.moveTo(xSpurLow - 12, yNoise);
+            ctxMode.lineTo(xSpurLow, spurHeight);
+            ctxMode.lineTo(xSpurLow + 12, yNoise);
+            ctxMode.stroke();
+            ctxMode.fillStyle = '#94a3b8';
+            ctxMode.fillText(`-f_H: ${m.spur2.toFixed(3)} MHz`, xSpurLow - 40, spurHeight - 8);
+
+            // -------------------------------------------------------------
+            // RIGHT SECTION : RESULTING DECODED SSTV IMAGE PREVIEW
+            // -------------------------------------------------------------
+            const imgX = 840;
+            const imgY = specY;
+            const imgW = 320;
+            const imgH = specH;
+
+            ctxMode.fillStyle = '#0b1120';
+            ctxMode.strokeStyle = '#1e293b';
+            roundRect(ctxMode, imgX, imgY, imgW, imgH, 8, true, true);
+
+            ctxMode.fillStyle = '#10b981';
+            ctxMode.font = 'bold 12px var(--font-sans)';
+            ctxMode.fillText('DECODED SSTV IMAGE AT RECEIVER', imgX + 15, imgY + 22);
+
+            const frameX = imgX + 25;
+            const frameY = imgY + 45;
+            const frameW = 270;
+            const frameH = 260;
+
+            ctxMode.fillStyle = '#000000';
+            ctxMode.fillRect(frameX, frameY, frameW, frameH);
+
+            if (currentMode === '800_2000' || currentMode === '1080p') {
+                drawMockSstvImage(ctxMode, frameX, frameY, frameW, frameH, 0, false);
+            } else if (currentMode === '800_200hz') {
+                drawMockSstvImage(ctxMode, frameX, frameY, frameW, frameH, 35, false);
+            } else if (currentMode === '800_blank') {
+                drawMockSstvImage(ctxMode, frameX, frameY, frameW, frameH, 0, true);
+            }
+
+            ctxMode.fillStyle = '#94a3b8';
+            ctxMode.font = '10px var(--font-mono)';
+            ctxMode.fillText(`Result: ${m.slope}`, frameX, frameY + frameH + 25);
+            ctxMode.fillText(`Measured PSNR: ${m.psnr}`, frameX + 150, frameY + frameH + 25);
+        }
+
+        function drawMockSstvImage(ctx, x, y, w, h, slant, blackStripes) {
+            const colors = ['#ffffff', '#ffff00', '#00ffff', '#00ff00', '#ff00ff', '#ff0000', '#0000ff', '#1e293b'];
+            const barW = w / colors.length;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x, y, w, h);
+            ctx.clip();
+
+            for (let line = 0; line < h; line += 2) {
+                let xShift = (line / h) * slant;
+                for (let c = 0; c < colors.length; c++) {
+                    ctx.fillStyle = colors[c];
+                    ctx.fillRect(x + c * barW + xShift, y + line, barW + 1, 2);
+                }
+            }
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px var(--font-sans)';
+            ctx.shadowColor = '#000000';
+            ctx.shadowBlur = 6;
+            ctx.fillText('F4JXQ', x + w / 2 - 38 + slant / 2, y + h / 2);
+            ctx.font = 'bold 12px var(--font-sans)';
+            ctx.fillText('14.230 MHz USB', x + w / 2 - 46 + slant / 2, y + h / 2 + 25);
+            ctx.shadowBlur = 0;
+
+            if (blackStripes) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                for (let sy = 0; sy < h; sy += 18) {
+                    ctx.fillRect(x, y + sy, w, 12);
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // =========================================================================
+        // ANIMATION 5 : COMPLETE SSTV PIPELINE & MARTIN 1 DECODE
+        // =========================================================================
+        const canvasSstv = document.getElementById('canvas-sstv');
+        const ctxSstv = canvasSstv.getContext('2d');
+        let sstvRunning = true;
+        let sstvLine = 0;
+        let sstvPhase = 0;
+
+        function toggleSstvAnim() {
+            sstvRunning = !sstvRunning;
+            document.getElementById('btn-sstv-play').textContent = sstvRunning ? '⏸ Pause' : '▶ Resume';
+        }
+
+        function restartSstvAnim() {
+            sstvLine = 0;
+            sstvPhase = 0;
+        }
+
+        const sstvSlider = document.getElementById('sstv-line-slider');
+        if (sstvSlider) {
+            sstvSlider.addEventListener('input', (e) => {
+                sstvLine = parseInt(e.target.value);
+                document.getElementById('sstv-line-disp').textContent = `Line ${sstvLine} / 255`;
+            });
+        }
+
+        function drawSstvAnim() {
+            if (!canvasSstv) return;
+            const width = canvasSstv.width;
+            const height = canvasSstv.height;
+            const speed = parseFloat(document.getElementById('sstv-speed')?.value || '1.5');
+
+            ctxSstv.fillStyle = '#060a14';
+            ctxSstv.fillRect(0, 0, width, height);
+
+            const pW = 340;
+            const pH = 400;
+            const pY = 40;
+
+            // -------------------------------------------------------------
+            // PANEL 1 : SOURCE TRANSMITTER (40 - 380)
+            // -------------------------------------------------------------
+            const p1X = 40;
+            ctxSstv.fillStyle = '#0b1120';
+            ctxSstv.strokeStyle = '#1e293b';
+            roundRect(ctxSstv, p1X, pY, pW, pH, 8, true, true);
+
+            ctxSstv.fillStyle = '#38bdf8';
+            ctxSstv.font = 'bold 12px var(--font-sans)';
+            ctxSstv.fillText('1. GPU TRANSMITTER: 320×256 SOURCE CARD', p1X + 15, pY + 24);
+
+            const mX = p1X + 20;
+            const mY = pY + 45;
+            const mW = 300;
+            const mH = 260;
+            drawMockSstvImage(ctxSstv, mX, mY, mW, mH, 0, false);
+
+            const curLineY = mY + (sstvLine / 256) * mH;
+            ctxSstv.strokeStyle = '#00f0ff';
+            ctxSstv.lineWidth = 2;
+            ctxSstv.shadowColor = '#00f0ff';
+            ctxSstv.shadowBlur = 8;
+            ctxSstv.beginPath();
+            ctxSstv.moveTo(mX, curLineY);
+            ctxSstv.lineTo(mX + mW, curLineY);
+            ctxSstv.stroke();
+            ctxSstv.shadowBlur = 0;
+
+            ctxSstv.fillStyle = '#94a3b8';
+            ctxSstv.font = '10px var(--font-mono)';
+            ctxSstv.fillText(`Active Scanline: Line ${sstvLine} / 255`, p1X + 20, pY + mH + 75);
+            ctxSstv.fillText('Format: Martin 1 (Green → Blue → Red)', p1X + 20, pY + mH + 95);
+
+            // -------------------------------------------------------------
+            // PANEL 2 : RF RADIO SIGNAL (420 - 760)
+            // -------------------------------------------------------------
+            const p2X = 420;
+            ctxSstv.fillStyle = '#0b1120';
+            ctxSstv.strokeStyle = '#1e293b';
+            roundRect(ctxSstv, p2X, pY, pW, pH, 8, true, true);
+
+            ctxSstv.fillStyle = '#10b981';
+            ctxSstv.font = 'bold 12px var(--font-sans)';
+            ctxSstv.fillText('2. HF 14.230 MHz USB MODULATION (AUDIO FM)', p2X + 15, pY + 24);
+
+            const fX = p2X + 20;
+            const fY = pY + 45;
+            const fW = 300;
+            const fH = 150;
+            ctxSstv.fillStyle = '#030712';
+            ctxSstv.fillRect(fX, fY, fW, fH);
+
+            const sSyncW = fW * 0.12;
+            const sPorchW = fW * 0.05;
+            const sColorW = (fW - sSyncW - 3 * sPorchW) / 3;
+
+            ctxSstv.fillStyle = 'rgba(239, 68, 68, 0.2)';
+            ctxSstv.fillRect(fX, fY, sSyncW, fH);
+            ctxSstv.fillStyle = 'rgba(16, 185, 129, 0.2)';
+            ctxSstv.fillRect(fX + sSyncW + sPorchW, fY, sColorW, fH);
+            ctxSstv.fillStyle = 'rgba(56, 189, 248, 0.2)';
+            ctxSstv.fillRect(fX + sSyncW + 2 * sPorchW + sColorW, fY, sColorW, fH);
+            ctxSstv.fillStyle = 'rgba(244, 63, 94, 0.2)';
+            ctxSstv.fillRect(fX + sSyncW + 3 * sPorchW + 2 * sColorW, fY, sColorW, fH);
+
+            ctxSstv.strokeStyle = '#00f0ff';
+            ctxSstv.lineWidth = 1.8;
+            ctxSstv.beginPath();
+            for (let x = 0; x < fW; x++) {
+                let freq = 1500;
+                if (x < sSyncW) freq = 1200;
+                else if (x < sSyncW + sPorchW + sColorW) freq = 1800;
+                else if (x < sSyncW + 2 * sPorchW + 2 * sColorW) freq = 2100;
+                else freq = 1600;
+
+                let val = Math.sin((x * freq * 0.003) - sstvPhase);
+                let wy = fY + fH / 2 + val * 45;
+                if (x === 0) ctxSstv.moveTo(fX + x, wy);
+                else ctxSstv.lineTo(fX + x, wy);
+            }
+            ctxSstv.stroke();
+
+            ctxSstv.fillStyle = '#e2e8f0';
+            ctxSstv.font = '10px var(--font-mono)';
+            ctxSstv.fillText('Sync (1200Hz)', fX + 5, fY + fH + 18);
+            ctxSstv.fillText('Green', fX + sSyncW + 15, fY + fH + 18);
+            ctxSstv.fillText('Blue', fX + sSyncW + sColorW + 25, fY + fH + 18);
+            ctxSstv.fillText('Red', fX + sSyncW + 2 * sColorW + 40, fY + fH + 18);
+
+            const sdrY = fY + fH + 40;
+            ctxSstv.fillStyle = '#1e293b';
+            roundRect(ctxSstv, fX, sdrY, fW, 110, 6, true, false);
+
+            ctxSstv.fillStyle = '#a855f7';
+            ctxSstv.font = 'bold 11px var(--font-sans)';
+            ctxSstv.fillText('SDRPLAY RSP1 RECEIVER + SOAPY SDR', fX + 15, sdrY + 22);
+
+            ctxSstv.fillStyle = '#94a3b8';
+            ctxSstv.font = '10px var(--font-mono)';
+            ctxSstv.fillText('• I/Q Sample Rate: 250 kSps CF32 (0 overflow)', fX + 15, sdrY + 45);
+            ctxSstv.fillText('• Demodulator: Single-pass continuous FFT', fX + 15, sdrY + 65);
+            ctxSstv.fillText('• Coherent Matched Filter 1200 Hz: Locked sync', fX + 15, sdrY + 85);
+
+            // -------------------------------------------------------------
+            // PANEL 3 : DECODED REAL-TIME IMAGE (800 - 1140)
+            // -------------------------------------------------------------
+            const p3X = 800;
+            ctxSstv.fillStyle = '#0b1120';
+            ctxSstv.strokeStyle = '#1e293b';
+            roundRect(ctxSstv, p3X, pY, pW, pH, 8, true, true);
+
+            ctxSstv.fillStyle = '#10b981';
+            ctxSstv.font = 'bold 12px var(--font-sans)';
+            ctxSstv.fillText('3. RECEIVED & DECODED IMAGE (100% LINES)', p3X + 15, pY + 24);
+
+            const rxX = p3X + 20;
+            const rxY = pY + 45;
+            const rxW = 300;
+            const rxH = 260;
+
+            ctxSstv.fillStyle = '#000000';
+            ctxSstv.fillRect(rxX, rxY, rxW, rxH);
+
+            ctxSstv.save();
+            ctxSstv.beginPath();
+            const decodedH = (sstvLine / 256) * rxH;
+            ctxSstv.rect(rxX, rxY, rxW, decodedH);
+            ctxSstv.clip();
+            drawMockSstvImage(ctxSstv, rxX, rxY, rxW, rxH, 0, false);
+            ctxSstv.restore();
+
+            ctxSstv.strokeStyle = '#10b981';
+            ctxSstv.lineWidth = 2;
+            ctxSstv.shadowColor = '#10b981';
+            ctxSstv.shadowBlur = 8;
+            ctxSstv.beginPath();
+            ctxSstv.moveTo(rxX, rxY + decodedH);
+            ctxSstv.lineTo(rxX + rxW, rxY + decodedH);
+            ctxSstv.stroke();
+            ctxSstv.shadowBlur = 0;
+
+            ctxSstv.fillStyle = '#34d399';
+            ctxSstv.font = '10px var(--font-mono)';
+            ctxSstv.fillText(`Lines received: ${sstvLine} / 256 (${Math.floor((sstvLine / 256) * 100)}%)`, p3X + 20, pY + rxH + 75);
+            ctxSstv.fillText('Alignment: Slope = 0.0 (Robust Linear PLL)', p3X + 20, pY + rxH + 95);
+
+            if (sstvRunning) {
+                sstvPhase += 0.2 * speed;
+                sstvLine += 0.25 * speed;
+                if (sstvLine > 255) sstvLine = 0;
+
+                const slider = document.getElementById('sstv-line-slider');
+                if (slider) slider.value = Math.floor(sstvLine);
+                const disp = document.getElementById('sstv-line-disp');
+                if (disp) disp.textContent = `Line ${Math.floor(sstvLine)} / 255`;
+            }
+
+            requestAnimationFrame(drawSstvAnim);
+        }
+
+        // =========================================================================
+        // GLOBAL INITIALIZATION ON LOAD
+        // =========================================================================
+        window.addEventListener('load', () => {
+            requestAnimationFrame(drawPipelineAnim);
+            requestAnimationFrame(drawShaderAnim);
+            requestAnimationFrame(drawPhaseAnim);
+            requestAnimationFrame(drawSstvAnim);
+
+            setVideoMode('800_2000');
+        });
+    </script>
+</body>
+</html>
