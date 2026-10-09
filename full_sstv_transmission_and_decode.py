@@ -15,8 +15,8 @@ def main():
         description="Émission complète SSTV Martin 1 et décodage automatique"
     )
     parser.add_argument(
-        "-s", "--rate", type=float, default=500000.0,
-        help="Taux d'échantillons SDR en Sps (ex: 250000, 500000, 1000000, défaut: 500000)"
+        "-s", "--rate", type=float, default=250000.0,
+        help="Taux d'échantillons SDR en Sps (ex: 250000, 500000, 1000000, défaut: 250000)"
     )
     parser.add_argument(
         "-d", "--duration", type=float, default=125.0,
@@ -47,20 +47,24 @@ def main():
         help="Nom de l'image de test émise (défaut: mire_f4jxq.png)"
     )
     parser.add_argument(
-        "--pclk", type=float, default=285.5e6,
-        help="Pixel Clock du mode vidéo en Hz (défaut: 285.50 MHz pour 120Hz)"
+        "--pclk", type=float, default=None,
+        help="Pixel Clock du mode vidéo en Hz (défaut: auto-détection via xrandr)"
     )
     parser.add_argument(
-        "--htotal", type=int, default=2080,
-        help="H_total du mode vidéo (défaut: 2080)"
+        "--htotal", type=int, default=None,
+        help="H_total du mode vidéo (défaut: auto-détection)"
     )
     parser.add_argument(
-        "--vtotal", type=int, default=1144,
-        help="V_total du mode vidéo (défaut: 1144)"
+        "--vtotal", type=int, default=None,
+        help="V_total du mode vidéo (défaut: auto-détection)"
+    )
+    parser.add_argument(
+        "--cpp", "--use-cpp", action="store_true",
+        help="Utiliser le moteur de rendu C/C++ haute cadence (vga_tx_gpu) sur my-yuno"
     )
     args = parser.parse_args()
 
-    capture_file = "sstv_full.cf32"
+    capture_file = "/dev/shm/sstv_full.cf32"
     duration = args.duration
     sdr_center = args.center
     sdr_rate = args.rate
@@ -72,12 +76,16 @@ def main():
     print(f"[*] Durée totale             : {duration:.1f} secondes")
     print(f"[*] Fréquence centrale SDR   : {sdr_center/1e6:.3f} MHz")
     print(f"[*] Taux d'échantillons      : {sdr_rate/1e3:.1f} kSps")
-    print(f"[*] Pixel Clock GPU          : {args.pclk/1e6:.3f} MHz (H={args.htotal}, V={args.vtotal})")
+    if args.pclk is not None:
+        print(f"[*] Pixel Clock forcé        : {args.pclk/1e6:.3f} MHz (H={args.htotal}, V={args.vtotal})")
+    else:
+        print("[*] Pixel Clock GPU          : Auto-détection dynamique sur my-yuno")
+    print(f"[*] Moteur GPU distant       : {'C/C++ Déterministe (vga_tx_gpu)' if args.cpp else 'Python Natif (moderngl)'}")
     print(f"[*] Fichier de capture       : {capture_file}")
     print("="*70)
 
     # 1. Démarrer la capture SDR
-    print("\n[1/3] Démarrage de l'enregistrement SDRplay (120 secondes)...")
+    print(f"\n[1/3] Démarrage de l'enregistrement SDRplay ({args.duration} secondes)...")
     cap_proc = subprocess.Popen([
         "./capture_iq",
         "-f", str(int(sdr_center)),
@@ -91,11 +99,13 @@ def main():
     time.sleep(2.0)
 
     # 2. Déclencher l'émission SSTV sur my-yuno
-    print(f"[2/3] Lancement de l'émission SSTV Martin 1 sur my-yuno ({args.mire}) en {args.pclk/1e6:.2f} MHz...")
-    cmd_ssh = [
-        "ssh", "192.168.1.26",
-        f"cd ~/projets/vga-hamradio && DISPLAY=:0 .venv/bin/python3 vga_sstv.py {args.mire} -f 14.230e6 --fullscreen --pclk {args.pclk} --htotal {args.htotal} --vtotal {args.vtotal}"
-    ]
+    print(f"[2/3] Lancement de l'émission SSTV Martin 1 sur my-yuno ({args.mire}) pour {duration:.1f}s...")
+    tx_cmd = f"cd ~/projets/vga-hamradio && DISPLAY=:0 .venv/bin/python3 vga_sstv.py {args.mire} -f 14.230e6 --duration {duration}"
+    if args.pclk is not None:
+        tx_cmd += f" --pclk {args.pclk} --htotal {args.htotal} --vtotal {args.vtotal}"
+    if args.cpp:
+        tx_cmd += " --cpp"
+    cmd_ssh = ["ssh", "192.168.1.26", tx_cmd]
     tx_proc = subprocess.Popen(cmd_ssh, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     print("[*] Émission en cours... Attente des 120 secondes d'acquisition...")

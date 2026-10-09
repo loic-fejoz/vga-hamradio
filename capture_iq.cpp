@@ -11,7 +11,7 @@
 
 int main(int argc, char** argv) {
     double freq = 14230000.0;
-    double rate = 2000000.0;
+    double rate = 250000.0;
     double gain = 35.0;
     double duration = 2.0;
     double ifgr = 40.0;
@@ -60,7 +60,10 @@ int main(int argc, char** argv) {
     sdr->setGain(SOAPY_SDR_RX, 0, "RFGR", rfgr);
     (void)gain;
 
-    SoapySDR::Stream *rxStream = sdr->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32);
+    SoapySDR::Kwargs streamArgs;
+    streamArgs["bufflen"] = "131072";
+    streamArgs["buffers"] = "16";
+    SoapySDR::Stream *rxStream = sdr->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
     sdr->activateStream(rxStream);
 
     std::ofstream outfile(outpath, std::ios::binary);
@@ -72,11 +75,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const size_t blockSize = 65536;
+    const size_t blockSize = 131072;
     std::vector<std::complex<float>> buffer(blockSize);
     size_t totalSamplesTarget = static_cast<size_t>(duration * rate);
     size_t totalSamplesRead = 0;
     float peakAbs = 0.0f;
+    int overflowCount = 0;
 
     std::cout << "[+] Enregistrement en cours..." << std::flush;
 
@@ -85,10 +89,17 @@ int main(int argc, char** argv) {
         long long timeNs = 0;
         size_t toRead = std::min(blockSize, totalSamplesTarget - totalSamplesRead);
         void *buffs[] = { buffer.data() };
-        int ret = sdr->readStream(rxStream, buffs, toRead, flags, timeNs, 1000000);
+        int ret = sdr->readStream(rxStream, buffs, toRead, flags, timeNs, 2000000);
         if (ret < 0) {
-            std::cerr << "\n[-] Erreur de lecture: " << ret << std::endl;
+            if (ret == SOAPY_SDR_OVERFLOW) {
+                overflowCount++;
+                continue;
+            }
+            std::cerr << "\n[-] Erreur de lecture SoapySDR: " << ret << std::endl;
             break;
+        }
+        if (flags & SOAPY_SDR_OVERFLOW) {
+            overflowCount++;
         }
         outfile.write(reinterpret_cast<const char*>(buffer.data()), ret * sizeof(std::complex<float>));
         for (int k = 0; k < ret; ++k) {
@@ -98,7 +109,13 @@ int main(int argc, char** argv) {
         totalSamplesRead += ret;
     }
 
-    std::cout << " Terminé ! (" << totalSamplesRead << " échantillons écrits, crête I/Q = " << peakAbs << ")" << std::endl;
+    std::cout << " Terminé ! (" << totalSamplesRead << " échantillons écrits, crête I/Q = " << peakAbs;
+    if (overflowCount > 0) {
+        std::cout << ", ⚠️ OVERFLOWS DÉTECTÉS = " << overflowCount;
+    } else {
+        std::cout << ", zéro overflow";
+    }
+    std::cout << ")" << std::endl;
 
     outfile.close();
     sdr->deactivateStream(rxStream);

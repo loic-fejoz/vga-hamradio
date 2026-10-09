@@ -5,17 +5,18 @@
 
 set -e
 
-REFRESH_RATE="60"
+MODE="1024"
 CUSTOM_OUTPUT=""
 
-while getopts "o:r:h" opt; do
+while getopts "o:r:m:h" opt; do
     case "$opt" in
         o) CUSTOM_OUTPUT="$OPTARG" ;;
-        r) REFRESH_RATE="$OPTARG" ;;
+        r) MODE="$OPTARG" ;;
+        m) MODE="$OPTARG" ;;
         h)
-            echo "Usage: $0 [-o OUTPUT] [-r 60|120]"
-            echo "  -o OUTPUT  : Spécifier la sortie (ex: VGA-1 ou DVI-I-1)"
-            echo "  -r REFRESH : Fréquence de rafraîchissement (60 ou 120, défaut: 60)"
+            echo "Usage: $0 [-o OUTPUT] [-m 1024|60|120]"
+            echo "  -o OUTPUT : Spécifier la sortie (ex: VGA-1 ou DVI-I-1)"
+            echo "  -m MODE   : Mode vidéo (1024=Mode A qHD 148MHz f_H=125k [défaut], 60=1080p@60Hz, 120=1080p@120Hz)"
             exit 0
             ;;
         *) exit 1 ;;
@@ -71,28 +72,49 @@ if [ -n "$SYSFS_STATUS_FILE" ]; then
     fi
 fi
 
-# 3. Définition et ajout de la Modeline
-if [ "$REFRESH_RATE" = "120" ]; then
-    MODE_NAME="1920x1080_120.00"
-    PCLK="285.50"
+if [ "$MODE" = "120" ] || [ "$MODE" = "119" ] || [ "$MODE" = "118.87" ] || [ "$MODE" = "1080_120" ]; then
+    MODE_NAME="1920x1080_118.87"
+    WIDTH="1920"
+    HEIGHT="1080"
+    PCLK="282.85"
     HTOTAL="2080"
     VTOTAL="1144"
-    echo "[+] Configuration du mode 1080p @ 120Hz CVT-RB (Pixel Clock : 285.50 MHz)..."
-    xrandr --newmode "$MODE_NAME" 285.50 1920 1968 2000 2080 1080 1083 1088 1144 +hsync -vsync 2>/dev/null || true
-else
+    echo "[+] Configuration du mode 1080p @ 118.87Hz CVT-RB (Pixel Clock : 282.85 MHz)..."
+    xrandr --newmode "$MODE_NAME" 282.85 1920 1968 2000 2080 1080 1083 1088 1144 +hsync -vsync 2>/dev/null || true
+elif [ "$MODE" = "60" ] || [ "$MODE" = "1080_60" ]; then
     MODE_NAME="1920x1080_60.00"
+    WIDTH="1920"
+    HEIGHT="1080"
     PCLK="148.50"
     HTOTAL="2200"
     VTOTAL="1125"
     echo "[+] Configuration du mode 1080p @ 60Hz standard (Pixel Clock : 148.50 MHz)..."
     xrandr --newmode "$MODE_NAME" 148.50 1920 2008 2052 2200 1080 1084 1089 1125 +hsync +vsync 2>/dev/null || true
+elif [ "$MODE" = "800" ] || [ "$MODE" = "800x600" ] || [ "$MODE" = "mode_c" ] || [ "$MODE" = "125" ] || [ "$MODE" = "125k" ]; then
+    MODE_NAME="800x2000_125k"
+    WIDTH="800"
+    HEIGHT="2000"
+    PCLK="120.00"
+    HTOTAL="960"
+    VTOTAL="2083"
+    echo "[+] Configuration du Mode C Hors-Bande (800x2000 @ 120.00 MHz, f_H = 125.0 kHz, f_V = 60.0 Hz, harmoniques hors bande 20m)..."
+    xrandr --newmode "$MODE_NAME" 120.00 800 824 856 960 2000 2003 2008 2083 +hsync -vsync 2>/dev/null || true
+else
+    MODE_NAME="1024x2000_125k"
+    WIDTH="1024"
+    HEIGHT="2000"
+    PCLK="148.00"
+    HTOTAL="1184"
+    VTOTAL="2083"
+    echo "[+] Configuration du Mode A Hors-Bande (1024x2000 @ 148.00 MHz, f_H = 125.0 kHz, f_V = 60.0 Hz, harmoniques hors bande 20m)..."
+    xrandr --newmode "$MODE_NAME" 148.00 1024 1072 1104 1184 2000 2003 2008 2083 +hsync -vsync 2>/dev/null || true
 fi
 
 xrandr --addmode "$VGA_OUTPUT" "$MODE_NAME" 2>/dev/null || true
 
 # 4. Activation du framebuffer et du CRTC
 echo "[+] Application de la résolution $MODE_NAME et allocation du CRTC..."
-xrandr --fb 1920x1080 --output "$VGA_OUTPUT" --mode "$MODE_NAME" --crtc 0 2>/dev/null || \
+xrandr --fb ${WIDTH}x${HEIGHT} --output "$VGA_OUTPUT" --mode "$MODE_NAME" --crtc 0 2>/dev/null || \
 xrandr --output "$VGA_OUTPUT" --mode "$MODE_NAME" 2>/dev/null || true
 
 # 5. VÉRIFICATION RÉELLE DE L'ACTIVATION DU CRTC
