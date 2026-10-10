@@ -2,7 +2,7 @@ CC ?= gcc
 CFLAGS ?= -std=c99 -O3 -Wall -Wextra
 CXX ?= g++
 CXXFLAGS ?= -std=c++11 -O3 -Wall -Wextra
-LIBS_SDR = -lSoapySDR
+LIBS_SDR = -lSoapySDR -lpthread
 LIBS_GL = -lX11 -lGL -lm -lpthread
 
 all: capture_iq vga_tx_gpu

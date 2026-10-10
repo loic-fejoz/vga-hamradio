@@ -8,6 +8,8 @@ Ce guide documente l'ensemble de l'architecture, le protocole expérimental, les
 
 ![Mire SSTV en couleur puis en dégradé de gris, avec le texte "DE F4JXQ SSTV GPU TX GeForce 630". L'ensemble est couvert d'un léger voile de points réguliers](image_recue_v2.png)
 
+Ecoutez le son résultant: [voix française suivi de SSTV suivi de voix anglaise](https://zenodo.org/records/23287769?preview_file=sstv_audio_demod_2152.wav).
+
 ---
 
 ## 📑 Table des Matières
@@ -368,6 +370,10 @@ Trois shaders spécialisés (`FRAGMENT_SHADER_CW`, `FRAGMENT_SHADER_TONE`, `FRAG
 ---
 
 ## 📁 Fichiers et Organisation du Projet
+
+
+Un enregistrement SigMF est disponible sur Zenodo : [SSB and SSTV GPU Generated - SDRPlay RSP1 Capture - 14M220 - 2026-10-10 21:52 CET](https://doi.org/10.5281/zenodo.23287769). Vous y trouverez aussi 2 images décodées une par QSSTV, un par le script python.
+
 
 | Fichier | Description |
 | :--- | :--- |

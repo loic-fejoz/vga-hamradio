@@ -1,5 +1,7 @@
 # Captures brutes I/Q volumineuses
 *.cf32
+*.sigmf-data
+*.sigmf.tar.zst
 
 # Fichiers audio démodulés
 *.wav

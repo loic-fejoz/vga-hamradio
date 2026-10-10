@@ -8,6 +8,8 @@ This guide documents the complete architecture, experimental protocol, underlyin
 
 ![Color SSTV test pattern followed by a grayscale version, featuring the text "DE F4JXQ SSTV GPU TX GeForce 630". The entire image is overlaid with a faint pattern of regular dots.](image_recue_v2.png)
 
+Listen to resulted sound: [French voice followed by SSTV followed by English voice](https://zenodo.org/records/23287769?preview_file=sstv_audio_demod_2152.wav).
+
 ---
 
 ## 📑 Table of Contents
@@ -388,6 +390,9 @@ Three specialized shaders (`FRAGMENT_SHADER_CW`, `FRAGMENT_SHADER_TONE`, `FRAGME
 ---
 
 ## 📊 Experimental Results and Performance
+
+
+A SigMF record is available on Zenodo: [SSB and SSTV GPU Generated - SDRPlay RSP1 Capture - 14M220 - 2026-10-10 21:52 CET](https://doi.org/10.5281/zenodo.23287769). You will also find 2 decoded images, one by QSSTV, one by the python script.
 
 Measurements taken during complete 125-second over-the-air laboratory transmissions on **14.230 MHz USB**:
 

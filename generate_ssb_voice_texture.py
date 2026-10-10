@@ -22,7 +22,7 @@ AUDIO_FS = 48000  # Standard audio sample rate for the vga-hamradio pipeline
 
 
 def generate_tts_audio(text, voice, output_mp3):
-    """Generates the MP3 audio file using edge-tts."""
+    """Generates the MP3 audio file using edge-tts with fallback to gTTS."""
     print(f"[*] Speech synthesis via Edge-TTS (Voice: {voice})...")
     print(f"    Text: \"{text}\"")
     cmd = [
@@ -31,10 +31,35 @@ def generate_tts_audio(text, voice, output_mp3):
         "--text", text,
         "--write-media", output_mp3
     ]
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        err_msg = ""
+        if hasattr(e, "stderr") and e.stderr:
+            err_msg = e.stderr.decode("utf-8", errors="ignore").strip()
+        print(f"[-] Edge-TTS indisponible ou erreur de service ({err_msg[:120]}...)")
+        print("[*] Bascule automatique sur le moteur de secours gTTS (Google TTS)...")
+        try:
+            from gtts import gTTS
+            lang = "fr"
+            if voice.startswith("en-"):
+                lang = "en"
+            elif voice.startswith("es-"):
+                lang = "es"
+            elif voice.startswith("de-"):
+                lang = "de"
+            elif voice.startswith("it-"):
+                lang = "it"
+
+            tts = gTTS(text=text, lang=lang, slow=False)
+            tts.save(output_mp3)
+        except Exception as gtts_err:
+            raise RuntimeError(f"Échec de la synthèse vocale (Edge-TTS et gTTS ont échoué: {gtts_err})") from gtts_err
+
     if not os.path.isfile(output_mp3) or os.path.getsize(output_mp3) == 0:
         raise RuntimeError(f"Failed to generate MP3 audio file: {output_mp3}")
     print(f"[+] Audio generated: {output_mp3} ({os.path.getsize(output_mp3)} bytes)")
+
 
 
 def convert_audio_to_wav(input_path, output_wav, target_fs=AUDIO_FS):

@@ -7,8 +7,12 @@ Auteur: F4JXQ / PoC GPU SDR
 import sys
 import os
 import wave
+import json
+import datetime
 import argparse
 import numpy as np
+import scipy.signal
+from fractions import Fraction
 from PIL import Image
 
 def decode_sstv_from_iq(iq_filename, sdr_center_freq=14.220e6, sdr_rate=250000.0,
@@ -35,20 +39,26 @@ def decode_sstv_from_iq(iq_filename, sdr_center_freq=14.220e6, sdr_rate=250000.0
     t = np.arange(total_samples, dtype=np.float64) / sdr_rate
     baseband_iq = data * np.exp(-2j * np.pi * offset_hz * t).astype(np.complex64)
 
-    # 2. Filtrage passe-bande continu USB audio [800 Hz - 2600 Hz] sans aucun découpage par blocs
-    print("[*] Filtrage passe-bande USB audio [800 Hz - 2600 Hz] (FFT globale sans artefacts)...")
-    fft_iq = np.fft.fft(baseband_iq)
-    f_axis = np.fft.fftfreq(total_samples, 1.0 / sdr_rate)
-    band_pass = (f_axis >= 800.0) & (f_axis <= 2600.0)
-    filtered_iq = np.fft.ifft(fft_iq * band_pass)
-
-    # 3. Rééchantillonnage continu vers 48 kHz (haute précision float64)
+    # 2. Filtrage passe-bas anti-repliement (anti-aliasing) et décimation vers audio 48 kHz
     audio_fs = 48000.0
-    audio_len = int(round(total_samples * (audio_fs / sdr_rate)))
-    t_in = np.arange(total_samples, dtype=np.float64) / sdr_rate
-    t_out = np.arange(audio_len, dtype=np.float64) / audio_fs
-    audio_real = np.interp(t_out, t_in, filtered_iq.real).astype(np.float32)
-    audio_imag = np.interp(t_out, t_in, filtered_iq.imag).astype(np.float32)
+    print(f"[*] Rééchantillonnage polyphase haute fidélité ({sdr_rate/1e3:.1f} kSps -> {audio_fs/1e3:.1f} kHz)...")
+
+    # Ratio d'échantillonnage exact P / Q sous forme de fraction irréductible
+    frac = Fraction(int(audio_fs), int(sdr_rate)).limit_denominator(1000)
+    up = frac.numerator
+    down = frac.denominator
+    print(f"    Facteur rationnel polyphase : up={up}, down={down}")
+
+    # Rééchantillonnage polyphase avec filtre Kaiser anti-repliement intégré (scipy.signal.resample_poly)
+    audio_complex = scipy.signal.resample_poly(baseband_iq, up, down).astype(np.complex64)
+
+    # 3. Filtrage passe-bande audio doux (IIR Butterworth ordre 4, [300 Hz - 2800 Hz] couvrant voix SSB et tonalités SSTV)
+    # Zéro distorsion de phase grâce à sosfiltfilt (filtrage bidirectionnel sans déphasage)
+    print("[*] Filtrage passe-bande audio USB [300 Hz - 2800 Hz] (Butterworth bidirectionnel zéro-phase)...")
+    sos = scipy.signal.butter(4, [300.0, 2800.0], btype='bandpass', fs=audio_fs, output='sos')
+    # Filtrage séparé des composantes I et Q pour conserver le signal analytique pur
+    audio_real = scipy.signal.sosfiltfilt(sos, audio_complex.real).astype(np.float32)
+    audio_imag = scipy.signal.sosfiltfilt(sos, audio_complex.imag).astype(np.float32)
     audio_complex = audio_real + 1j * audio_imag
     print(f"[+] Audio USB démodulé : {len(audio_complex)} échantillons ({len(audio_complex)/audio_fs:.2f} s)")
 
@@ -80,30 +90,57 @@ def decode_sstv_from_iq(iq_filename, sdr_center_freq=14.220e6, sdr_rate=250000.0
     print(f"[*] Calcul du filtre adapté (Matched Filter) 1200 Hz (ligne nominale = {nominal_line:.3f} éch)...")
     t_sync = np.arange(sync_samples, dtype=np.float64) / audio_fs
     ref_sync = np.hanning(sync_samples) * np.exp(-2j * np.pi * 1200.0 * t_sync)
-    mf = np.abs(np.convolve(audio_complex, ref_sync, mode='same'))**2
+    mf = np.abs(np.convolve(audio_real, ref_sync, mode='same'))**2
 
-    # 7. Détection du début de transmission (Préambule / VIS 1900 Hz)
-    print("[*] Détection du préambule et de l'en-tête VIS...")
-    win_1900 = int(0.100 * audio_fs)
-    ref_1900 = np.hanning(win_1900) * np.exp(-2j * np.pi * 1900.0 * np.arange(win_1900) / audio_fs)
-    p_1900 = np.abs(np.convolve(audio_real, ref_1900, mode='valid'))**2
-    thresh_1900 = 0.20 * np.max(p_1900[:int(min(len(p_1900), 10.0 * audio_fs))])
-    t_start_idx = np.where(p_1900[:int(min(len(p_1900), 10.0 * audio_fs))] > thresh_1900)[0][0]
-    t_start = t_start_idx / audio_fs
-    print(f"[+] Début de transmission détecté à t = {t_start:.3f} s")
+    # 7. Détection robuste de la trame SSTV Martin 1 (Signature VIS 1900 Hz + Ligne 0 périodique)
+    print("[*] Détection robuste de la trame SSTV Martin 1 (Signature VIS 1900 Hz + impulsion 1200 Hz)...")
+    
+    # Filtre adapté pour le ton leader 1900 Hz (100 ms)
+    win19 = int(0.100 * audio_fs)
+    ref19 = np.hanning(win19) * np.exp(-2j * np.pi * 1900.0 * np.arange(win19) / audio_fs)
+    p1900 = np.abs(np.convolve(audio_real, ref19, mode='same'))**2
 
-    # 8. Verrouillage de la première impulsion de synchronisation (Ligne 0)
-    # Préambule VOX (510ms) + En-tête VIS standard (Leader 610ms + VIS 300ms) = 1.420s
-    search_start = int((t_start + 1.25) * audio_fs)
-    search_end = int((t_start + 1.55) * audio_fs)
-    vis_stop_idx = search_start + np.argmax(mf[search_start : search_end])
-    # L'impulsion de synchro de la ligne 0 (4.862 ms) se situe 30 ms après le début du stop bit VIS
-    p0_search_start = vis_stop_idx + int(0.015 * audio_fs)
-    p0_search_end = vis_stop_idx + int(0.045 * audio_fs)
-    first_sync_idx = p0_search_start + np.argmax(mf[p0_search_start : p0_search_end])
-    print(f"[+] Première impulsion de synchro (Ligne 0) verrouillée à t = {first_sync_idx / audio_fs:.4f} s")
+    # Recherche des candidats pour la tonalité leader 1900 Hz
+    peaks19, _ = scipy.signal.find_peaks(p1900, height=0.20 * np.max(p1900), distance=int(0.8 * audio_fs))
 
-    # 9. Estimation et calage précis de la pente de ligne (Zéro-gigue PLL logicielle)
+    first_sync_idx = None
+    for p19 in peaks19:
+        # Entre 0.8s et 1.4s après le leader 1900Hz se trouve la ligne 0 (synchro 1200 Hz)
+        w0 = int(p19 + 0.75 * audio_fs)
+        w1 = int(p19 + 1.45 * audio_fs)
+        if w1 >= len(mf):
+            continue
+        pk0 = w0 + np.argmax(mf[w0:w1])
+        # Vérification qu'au moins 5 lignes consécutives présentent une impulsion de synchro 1200 Hz
+        valid_pulses = sum(
+            1 for l in range(1, 8)
+            if pk0 + int(l * nominal_line) + 150 < len(mf)
+            and np.max(mf[pk0 + int(l * nominal_line) - 150 : pk0 + int(l * nominal_line) + 150]) > 0.08 * np.max(mf)
+        )
+        if valid_pulses >= 4:
+            first_sync_idx = pk0
+            break
+
+    if first_sync_idx is None:
+        print("[-] Fallback : recherche directe par périodicité 1200 Hz...")
+        thresh_mf = 0.15 * np.max(mf)
+        candidate_peaks, _ = scipy.signal.find_peaks(mf, height=thresh_mf, distance=int(0.25 * audio_fs))
+        for p in candidate_peaks:
+            val = sum(1 for l in range(1, 8) if p + int(l * nominal_line) + 150 < len(mf) and np.max(mf[p + int(l * nominal_line) - 150 : p + int(l * nominal_line) + 150]) > thresh_mf)
+            if val >= 4:
+                first_sync_idx = p
+                break
+
+    if first_sync_idx is None:
+        print("[-] Attention: Train d'impulsions périodiques non verrouillé, repli sur le maximum global.")
+        first_sync_idx = np.argmax(mf)
+
+    # Le préambule VOX / VIS se situe environ 1.45s avant la ligne 0
+    t_start = max(0.0, (first_sync_idx / audio_fs) - 1.453)
+    print(f"[+] Début de transmission SSTV identifié à t = {t_start:.3f} s")
+    print(f"[+] Première impulsion de synchro (Ligne 0) verrouillée à t = {first_sync_idx / audio_fs:.4f} s (index {first_sync_idx})")
+
+    # 8. Synchronisation précise de la cadence de ligne et calage sub-pixel
     print("[*] Synchronisation précise de la cadence de ligne...")
     t_resample = np.linspace(0, chan_samples - 1, 320)
     p0 = first_sync_idx
@@ -206,6 +243,91 @@ def decode_sstv_from_iq(iq_filename, sdr_center_freq=14.220e6, sdr_rate=250000.0
             print("="*70)
         except Exception as e:
             print(f"[-] Erreur comparaison gap : {e}")
+
+    # 12. Mise à jour automatique des métadonnées SigMF si un fichier .sigmf-meta existe
+    sigmf_meta_path = None
+    if iq_filename.endswith(".cf32") or iq_filename.endswith(".sigmf-data"):
+        base_name = os.path.splitext(iq_filename)[0]
+        candidate = base_name + ".sigmf-meta"
+        if os.path.isfile(candidate):
+            sigmf_meta_path = candidate
+    elif os.path.isfile(iq_filename + ".sigmf-meta"):
+        sigmf_meta_path = iq_filename + ".sigmf-meta"
+
+    if sigmf_meta_path and os.path.isfile(sigmf_meta_path):
+        try:
+            print(f"\n[*] Fichier de métadonnées SigMF détecté : {sigmf_meta_path}")
+            with open(sigmf_meta_path, "r", encoding="utf-8") as f:
+                sigmf_dict = json.load(f)
+
+            if "annotations" not in sigmf_dict or not isinstance(sigmf_dict["annotations"], list):
+                sigmf_dict["annotations"] = []
+
+            # Échantillons IQ exacts au taux sdr_rate
+            sstv_iq_start = int(round(t_start * sdr_rate))
+            # Fin de la dernière ligne décodée
+            t_sstv_end = (best_p0 + 256 * best_slope) / audio_fs
+            sstv_iq_count = int(round((t_sstv_end - t_start) * sdr_rate))
+            sstv_iq_count = max(0, min(sstv_iq_count, total_samples - sstv_iq_start))
+
+            # Bornes de fréquences RF exactes [1100 Hz - 2300 Hz] en USB par rapport à carrier_freq
+            freq_lower = float(carrier_freq + 1100.0)
+            freq_upper = float(carrier_freq + 2300.0)
+
+            # Calcul de l'horodatage ISO-8601 absolu de début si datetime de capture est présent
+            annotation_datetime = None
+            if "captures" in sigmf_dict and len(sigmf_dict["captures"]) > 0:
+                cap_dt_str = sigmf_dict["captures"][0].get("core:datetime")
+                if cap_dt_str:
+                    try:
+                        # Parsing ISO UTC (ex: 2026-10-10T16:53:15.067Z)
+                        clean_dt = cap_dt_str.replace("Z", "+00:00")
+                        cap_dt = datetime.datetime.fromisoformat(clean_dt)
+                        ann_dt = cap_dt + datetime.timedelta(seconds=t_start)
+                        annotation_datetime = ann_dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                    except Exception:
+                        pass
+
+            annotation_obj = {
+                "core:sample_start": sstv_iq_start,
+                "core:sample_count": sstv_iq_count,
+                "core:freq_lower_edge": freq_lower,
+                "core:freq_upper_edge": freq_upper,
+                "core:label": "SSTV Martin 1",
+                "core:comment": (
+                    f"Martin 1 transmission decoded into {output_image}. "
+                    f"VIS start: {t_start:.3f}s, line slope: {best_slope:.4f} samples/line @ 48kHz."
+                ),
+                "sstv:mode": "Martin 1",
+                "sstv:lines": 256,
+                "sstv:output_image": output_image,
+                "sstv:t_start_sec": round(float(t_start), 4),
+                "sstv:duration_sec": round(float(t_sstv_end - t_start), 4),
+                "sstv:line_rate_lpm": round(float(60.0 * audio_fs / best_slope), 5)
+            }
+            if annotation_datetime:
+                annotation_obj["core:datetime"] = annotation_datetime
+
+            # Remplacement ou ajout (évite les doublons identiques SSTV Martin 1)
+            updated_annotations = [
+                ann for ann in sigmf_dict["annotations"]
+                if ann.get("core:label") != "SSTV Martin 1"
+            ]
+            updated_annotations.append(annotation_obj)
+
+            # Tri obligatoire selon la spécification SigMF
+            updated_annotations.sort(key=lambda a: a.get("core:sample_start", 0))
+            sigmf_dict["annotations"] = updated_annotations
+
+            with open(sigmf_meta_path, "w", encoding="utf-8") as f:
+                json.dump(sigmf_dict, f, indent=4)
+
+            print(f"[+] Métadonnées SigMF mises à jour avec succès :")
+            print(f"    - Début SSTV : échantillon {sstv_iq_start} (t = {t_start:.3f} s)")
+            print(f"    - Durée SSTV : {sstv_iq_count} échantillons ({t_sstv_end - t_start:.2f} s)")
+            print(f"    - Bande RF   : {freq_lower/1e6:.6f} MHz - {freq_upper/1e6:.6f} MHz")
+        except Exception as meta_err:
+            print(f"[-] Erreur lors de la mise à jour du fichier SigMF : {meta_err}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Décodeur SSTV Martin 1 direct depuis capture IQ SDR")
