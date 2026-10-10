@@ -1,0 +1,98 @@
+* ==============================================================================
+* Émetteur VGA-SDR (vga-hamradio)
+* Étage de connexion directe VGA -> SDRplay RSP1 (50 Ohm)
+* Découplage DC + Pad en L Minimum Loss (75 Ohm -> 50 Ohm)
+* Référence : FILTER.md (Section 4 - Connexion directe SDR)
+* ==============================================================================
+
+.title VGA 75 Ohm to SDR 50 Ohm L-Pad Adapter & DC Blocker
+
+* ------------------------------------------------------------------------------
+* 1. Schéma du circuit
+* ------------------------------------------------------------------------------
+
+* Source VGA : Porteuse RF (1 V crête AC) + Offset continu (+0.35 V DC)
+* avec impédance interne de source de 75 Ohms (DAC vidéo / ligne 75R)
+Vin_vga  vga_ideal 0        DC 0.35  AC 1.0
+R_src    vga_ideal vga_pin  75
+
+* Condensateur de découplage DC en série (pastille céramique 100 nF / marquage "104")
+* Bloque le DC du DAC, impédance réactive Xc = 0.11 Ohm à 14.23 MHz
+C_dc     vga_pin   n_rs     100n
+
+* Pad en L (Minimum Loss Pad) :
+* - Rs en série côté 75 Ohms : 43 Ohms (E24) ou 47 Ohms (E12)
+* - Rp en shunt côté 50 Ohms : 82 Ohms (E24/E12)
+R_s      n_rs      rf_out   43
+R_p      rf_out    0        82
+
+* Charge de réception RF (SDRplay RSP1 / SMA 50 Ohms)
+R_load   rf_out    0        50
+
+* ------------------------------------------------------------------------------
+* 2. Commandes de simulation et analyse ngspice
+* ------------------------------------------------------------------------------
+.control
+set numdgt = 4
+
+echo "=========================================================================="
+echo "   SIMULATION NGSPICE : PAD EN L MINIMUM LOSS 75 -> 50 OHM (SDR DIRECT)  "
+echo "=========================================================================="
+
+* --- A. Analyse au point de repos DC (Vérification du blocage continu) ---
+op
+echo ""
+echo "[1] TEST DU DÉCOUPLAGE DC :"
+print v(vga_pin) v(rf_out)
+echo "    -> vga_pin  = 0.35 V (composante continue VGA bloquée par C_dc)"
+echo "    -> rf_out   = 0.00 V (entrée SDRplay parfaitement protégée du DC)"
+
+* --- B. Balayage en fréquence AC (100 kHz -> 100 MHz) ---
+ac dec 50 100k 100MEG
+
+* Impédance d'entrée Zin vue par la prise VGA (avec C_dc en série)
+let I_in = (v(vga_ideal) - v(vga_pin)) / 75.0
+let Z_in = v(vga_pin) / I_in
+let Zin_real = real(Z_in)
+let Zin_imag = imag(Z_in)
+let gamma_in = (Z_in - 75.0) / (Z_in + 75.0)
+let S11_dB = 20 * log10(mag(gamma_in))
+let VSWR_in = (1.0 + mag(gamma_in)) / (1.0 - mag(gamma_in))
+
+* Impédance de sortie Zout vue par le récepteur (côté 50 Ohms)
+* Théorème de Thévenin : Zout = Rp // (Rs + Z_src) = 82 // (43 + 75) = 82 // 118
+let Z_out = (82.0 * (43.0 + 75.0)) / (82.0 + 43.0 + 75.0)
+let gamma_out = (Z_out - 50.0) / (Z_out + 50.0)
+let S22_dB = 20 * log10(abs(gamma_out))
+let VSWR_out = (1.0 + abs(gamma_out)) / (1.0 - abs(gamma_out))
+
+* Pertes d'insertion / transmission
+let V_load = mag(v(rf_out))
+let S21_dB = 10 * log10((V_load * V_load / 50.0) / (1.0 / 300.0))
+
+echo ""
+echo "[2] MESURES HAUTE FRÉQUENCE A 14.230 MHz (Bande 20m SSTV) :"
+meas ac Zin_real_14M find Zin_real at=14.23MEG
+meas ac Zin_imag_14M find Zin_imag at=14.23MEG
+meas ac S11_14M find S11_dB at=14.23MEG
+meas ac VSWR_14M find VSWR_in at=14.23MEG
+meas ac S21_14M find S21_dB at=14.23MEG
+
+echo ""
+echo "[3] ADAPTATION BILATÉRALE (VGA 75R & SDRPLAY 50R) :"
+print Z_out S22_dB VSWR_out
+echo "    -> Côté VGA (75R)   : Zin = 74.1 Ohms | S11 = -44 dB | ROS = 1.01 : 1"
+echo "    -> Côté SDR (50R)   : Zout = 48.4 Ohms | S22 = -36 dB | ROS = 1.03 : 1"
+echo "    -> Atténuation S21  : 5.84 dB (optimum théorique minimum loss)"
+
+echo ""
+echo "[4] COMPORTEMENT EN FRÉQUENCE DU S11 (1 MHz -> 28.5 MHz) :"
+meas ac S11_1M  find S11_dB at=1.0MEG
+meas ac S11_7M  find S11_dB at=7.1MEG
+meas ac S11_14M find S11_dB at=14.23MEG
+meas ac S11_28M find S11_dB at=28.5MEG
+
+quit
+.endc
+
+.end

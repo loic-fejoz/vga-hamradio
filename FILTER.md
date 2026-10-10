@@ -105,7 +105,7 @@ Selon l'**ITU-R SM.329** et la réglementation **ANFR/ARCEP** en France pour le 
 
 ```
              PLAN DE BANDE 20M (14.000 - 14.350 MHz)
-  14.000         14.070        14.150              14.230        14.350 MHz
+  14.000         14.070        14.112              14.230        14.350 MHz
 ────┼──────────────┼─────────────┼───────────────────┼─────────────┼──────►
     │   CW PUR     │  DIGIMODES  │    PHONIE SSB     │ SSTV D'APPEL│ HORS BANDE
     │              │  (PSK, FT8) │                   │ (Martin 1)  │
@@ -135,8 +135,9 @@ Le choix de l'hypothèse d'émission change radicalement la complexité du filtr
                             │
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│  ÉTAGE COMMUN : DÉCOUPLAGE DC & ATTÉNUATEUR 75Ω ➔ 50Ω  │
-│  Condensateur 100 nF NP0 + Atténuateur Pi résistif 3dB │
+│  ÉTAGE D'ADAPTATION 75 Ω ➔ 50 Ω & DÉCOUPLAGE DC       │
+│  - Test SDR direct : Pad en L (43Ω/82Ω) + Atténuateur  │
+│  - Liaison PA / Émission : Tore UNUN 1.22:1 sans perte │
 └───────────────────────────┬────────────────────────────┘
                             │
               ┌─────────────┴─────────────┐
@@ -173,18 +174,36 @@ Le choix de l'hypothèse d'émission change radicalement la complexité du filtr
 
 ### Étage commun : Découplage DC et adaptation d'impédance 75 Ω ➔ 50 Ω
 
-La sortie VGA présente une composante continue médiane de $+0.35\text{ V}$ et une impédance de ligne vidéo de $75\ \Omega$ :
+La sortie VGA (Broche 1) présente une composante continue médiane de $+0.35\text{ V}$ et une impédance caractéristique de $75\ \Omega$. Deux cas d'usage se distinguent :
 
+#### Cas 1 : Connexion directe au banc de mesure / SDRplay RSP1 (Pad en L Minimum Loss)
+
+Pour raccorder directement la sortie VGA à un récepteur sensible (SDRplay RSP1, RTL-SDR) sans risque de saturation, on utilise un **Pad en L** combiné à un condensateur de découplage série :
+
+```text
+               C_DC = 100 nF        R_s = 43 Ω (E24) ou 47 Ω (E12)
+VGA In (75 Ω) o─────┤├───┬───────────/\/\/\──────────┬─────o RF Out (50 Ω vers SDR)
+(Broche 1)               │                           │
+                        (Non                         [ ] R_p = 82 Ω
+                       connecté)                      │
+                                                     ---
+VGA GND (Broche 6) o─────────────────────────────────┴─────o GND SMA (Blindage)
 ```
-         C_DC = 100 nF        R_s = 22 Ω
-VGA In o─────┤├───┬─────────────/\/\/\─────────────┬─────o RF Out (50 Ω)
-(75 Ω)            │                                │
-                 [ ] R_in = 150 Ω                 [ ] R_out = 100 Ω
-                  │                                │
-GND    o──────────┴────────────────────────────────┴─────o GND
-```
-* **Pertes d'insertion :** $\approx 3.5\text{ dB}$.
-* **Adaptation :** $S_{11} < -20\text{ dB}$ (ROS $< 1.2:1$).
+
+* **Découplage continu :** $C_{\text{DC}} = 100\text{ nF}$ (pastille céramique "104") en série sur la ligne de signal bloque à $100\%$ le $+0.35\text{ V}$ DC ($X_C \approx 0.11\ \Omega$ à $14.23\text{ MHz}$).
+* **Adaptation bilatérale (mesures ngspice) :**
+  * Côté VGA ($75\ \Omega$) : $Z_{\text{in}} = 74.1\ \Omega \implies S_{11} = -44\text{ dB}$, $\text{ROS} = 1.01 : 1$.
+  * Côté SDR ($50\ \Omega$) : $Z_{\text{out}} = 48.4\ \Omega \implies S_{22} = -36\text{ dB}$, $\text{ROS} = 1.03 : 1$.
+* **Pertes d'insertion :** $5.84\text{ dB}$ (optimum théorique pour une adaptation résistive pure).
+* **Atténuation complémentaire :** Compléter par un atténuateur RF $50\ \Omega$ coaxial de **$20\text{ dB}$ à $30\text{ dB}$** devant l'entrée SMA du RSP1 pour opérer dans la zone de linéarité idéale de l'ADC ($-30\text{ dBm}$).
+
+#### Cas 2 : Connexion vers chaîne d'émission (Filtre + PA d'émission)
+
+À l'inverse d'une mesure SDR où l'on cherche à atténuer, une chaîne d'émission doit préserver l'intégralité du faible signal utile du RAMDAC (~$0\text{ dBm}$ / $1\text{ mW}$) :
+* **Tolérance du port VGA :** Le contrôleur vidéo VGA tolère très bien un ROS modéré sans dommage matériel.
+* **Solutions sans pertes résistives :**
+  1. **Autotransformateur UNUN sur tore ferrite (FT37-43) :** 11 spires au total avec prise à 9 spires (rapport de transformation $\sqrt{1.5} \approx 1.22:1$, pertes $< 0.3\text{ dB}$).
+  2. **Attaque directe du filtre passe-bande :** Dimensionner l'impédance du premier étage résonateur du filtre LC ou Cohn directement à $75\ \Omega$, avec sortie résonateur adaptée à $50\ \Omega$.
 
 ---
 

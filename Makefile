@@ -15,3 +15,8 @@ vga_tx_gpu: vga_tx_gpu.c
 
 clean:
 	rm -f capture_iq vga_tx_gpu
+
+spice:
+	ngspice -b stage_adaptation_vga.cir
+
+.PHONY: spice clean
